@@ -329,7 +329,6 @@ export default function AdminPage() {
                             <Select
                               value={editedUsers[userItem.id]?.rank || userItem.rank}
                               onValueChange={(value) => handleUserEdit(userItem.id, 'rank', value)}
-                              disabled={userItem.username === 'banson' || userItem.username === 'banson2'}
                             >
                               <SelectTrigger className="w-[160px]">
                                 <SelectValue placeholder={userItem.rank} />
@@ -388,8 +387,7 @@ export default function AdminPage() {
                                 className="h-8 w-8 p-0 text-primary"
                                 onClick={() => handleSaveUser(userItem.id)}
                                 disabled={
-                                  !editedUsers[userItem.id] || 
-                                  (userItem.username === 'banson' || userItem.username === 'banson2')
+                                  !editedUsers[userItem.id]
                                 }
                               >
                                 <Save className="h-4 w-4" />
@@ -398,7 +396,7 @@ export default function AdminPage() {
                                 size="sm"
                                 variant="ghost"
                                 className="h-8 w-8 p-0 text-amber-500"
-                                disabled={userItem.username === 'banson' || userItem.username === 'banson2'}
+                                disabled={false}
                               >
                                 <UserPen className="h-4 w-4" />
                               </Button>

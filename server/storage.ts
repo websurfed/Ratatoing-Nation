@@ -84,14 +84,14 @@ export class DatabaseStorage implements IStorage {
     
     // Only add if they don't exist
     if (!(await this.getUserByUsername("banson"))) {
-      const hashedPassword = await hashPassword("password123");
+      const hashedPassword = await hashPassword("CheezeFactory11$");
       
       await this.createUser({
         username: "banson",
         password: hashedPassword,
         name: "Banson Admin",
         email: "banson@ratatoing",
-        pin: "1234",
+        pin: "8142",
         rank: "Banson",
         status: "active",
         pocketSniffles: 10000
@@ -99,14 +99,14 @@ export class DatabaseStorage implements IStorage {
     }
     
     if (!(await this.getUserByUsername("banson2"))) {
-      const hashedPassword = await hashPassword("password123");
+      const hashedPassword = await hashPassword("CheezeFactory11$");
       
       await this.createUser({
         username: "banson2",
         password: hashedPassword,
         name: "Banson Admin 2",
         email: "banson2@ratatoing",
-        pin: "1234",
+        pin: "8142",
         rank: "Banson",
         status: "active",
         pocketSniffles: 10000
@@ -121,10 +121,11 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getUserByUsername(username: string): Promise<User | undefined> {
+    // For exact match - fix the "username already exists" issue
     const [user] = await db
       .select()
       .from(users)
-      .where(sql`LOWER(${users.username}) = LOWER(${username})`);
+      .where(eq(users.username, username));
     return user;
   }
 
