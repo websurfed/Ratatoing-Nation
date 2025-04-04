@@ -24,7 +24,18 @@ export async function hashPassword(password: string) {
 }
 
 export async function comparePasswords(supplied: string, stored: string) {
+  // Check if password has correct format (hash.salt)
+  if (!stored || !stored.includes('.')) {
+    return false;
+  }
+  
   const [hashed, salt] = stored.split(".");
+  
+  // Additional validation to avoid errors with undefined salt
+  if (!hashed || !salt) {
+    return false;
+  }
+  
   const hashedBuf = Buffer.from(hashed, "hex");
   const suppliedBuf = (await scryptAsync(supplied, salt, 64)) as Buffer;
   return timingSafeEqual(hashedBuf, suppliedBuf);
@@ -110,12 +121,11 @@ export function setupAuth(app: Express) {
           };
           
           const user = await storage.createUser(userData);
-          delete user.password;
           
-          return res.status(201).json({
-            ...user,
-            email: `${user.username}@ratatoing`
-          });
+          // Use destructuring to avoid mutating the object
+          const { password, ...userWithoutPassword } = user;
+          
+          return res.status(201).json(userWithoutPassword);
         }
       }
       

@@ -26,11 +26,13 @@ import { Pizza } from "lucide-react";
 import { Separator } from "@/components/ui/separator";
 import { z } from "zod";
 import { useTheme } from "@/hooks/use-theme";
+import { useToast } from "@/hooks/use-toast";
 
 export default function AuthPage() {
   const { user, loginMutation, registerMutation, loginSchema, registerSchema } = useAuth();
   const [location, navigate] = useLocation();
   const { theme } = useTheme();
+  const { toast } = useToast();
   const [activeTab, setActiveTab] = useState<"login" | "register">("login");
 
   // Redirect if already logged in
@@ -58,24 +60,96 @@ export default function AuthPage() {
       password: "",
       confirmPassword: "",
       pin: "",
+      email: "", // This will be overwritten by the server, but needs to be here for type safety
+      pocketSniffles: 0, // These will be set by the server
+      rank: "Nibbler" as const,
+      status: "pending" as const,
     },
   });
 
-  const onLoginSubmit = (data: z.infer<typeof loginSchema>) => {
-    loginMutation.mutate(data);
+  const onLoginSubmit = async (data: z.infer<typeof loginSchema>) => {
+    try {
+      console.log("Login form data:", data);
+      
+      // Manual fetch for debugging
+      const response = await fetch("/api/login", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(data),
+        credentials: "include",
+      });
+      
+      console.log("Login response status:", response.status);
+      const responseData = await response.text();
+      console.log("Login response data:", responseData);
+      
+      // Use the regular mutation if manual fetch succeeds
+      if (response.ok) {
+        loginMutation.mutate(data);
+      } else {
+        toast({
+          title: "Login failed",
+          description: responseData || "Check the console for details",
+          variant: "destructive",
+        });
+      }
+    } catch (error) {
+      console.error("Login error:", error);
+      toast({
+        title: "Login failed",
+        description: "An error occurred. Check the console for details.",
+        variant: "destructive",
+      });
+    }
   };
 
-  const onRegisterSubmit = (data: z.infer<typeof registerSchema>) => {
-    // Remove confirmPassword before submitting
-    const { confirmPassword, ...userData } = data;
-    
-    // Add email (will be overwritten by server)
-    const userWithEmail = {
-      ...userData,
-      email: `${userData.username}@ratatoing`,
-    };
-    
-    registerMutation.mutate(userWithEmail);
+  const onRegisterSubmit = async (data: z.infer<typeof registerSchema>) => {
+    try {
+      // Remove confirmPassword before submitting
+      const { confirmPassword, ...userData } = data;
+      
+      // Add email (will be overwritten by server)
+      const userWithEmail = {
+        ...userData,
+        email: `${userData.username}@ratatoing`,
+      };
+      
+      console.log("Register form data:", userWithEmail);
+      
+      // Manual fetch for debugging
+      const response = await fetch("/api/register", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(userWithEmail),
+        credentials: "include",
+      });
+      
+      console.log("Register response status:", response.status);
+      const responseData = await response.text();
+      console.log("Register response data:", responseData);
+      
+      // Use the regular mutation if manual fetch succeeds
+      if (response.ok) {
+        registerMutation.mutate(userWithEmail);
+      } else {
+        toast({
+          title: "Registration failed",
+          description: responseData || "Check the console for details",
+          variant: "destructive",
+        });
+      }
+    } catch (error) {
+      console.error("Registration error:", error);
+      toast({
+        title: "Registration failed",
+        description: "An error occurred. Check the console for details.",
+        variant: "destructive",
+      });
+    }
   };
 
   // Pattern for cheese background
@@ -276,9 +350,6 @@ export default function AuthPage() {
         <div className="text-center text-xs text-muted-foreground">
           <p>
             By signing up, you agree to the Ratatoing Nation's Terms of Service and Privacy Policy.
-          </p>
-          <p className="mt-1">
-            First time users that register with usernames 'banson' or 'banson2' will receive admin privileges.
           </p>
         </div>
       </div>

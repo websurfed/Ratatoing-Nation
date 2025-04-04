@@ -128,6 +128,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // Define extended schemas with validation
   const loginSchema = loginUserSchema;
   
+  // Explicitly import z if it's not already imported at the top
   const registerSchema = insertUserSchema.extend({
     confirmPassword: z.string()
   }).refine((data) => data.password === data.confirmPassword, {

@@ -99,11 +99,16 @@ export class MemStorage implements IStorage {
 
   // Seed admin users
   private async seedAdminUsers() {
+    // Import hashPassword from auth
+    const { hashPassword } = await import('./auth');
+    
     // Only add if they don't exist
     if (!(await this.getUserByUsername("banson"))) {
+      const hashedPassword = await hashPassword("password123");
+      
       this.createUser({
         username: "banson",
-        password: "password", // Will be hashed during user creation
+        password: hashedPassword,
         name: "Banson Admin",
         email: "banson@ratatoing",
         pin: "1234",
@@ -114,9 +119,11 @@ export class MemStorage implements IStorage {
     }
     
     if (!(await this.getUserByUsername("banson2"))) {
+      const hashedPassword = await hashPassword("password123");
+      
       this.createUser({
         username: "banson2",
-        password: "password", // Will be hashed during user creation
+        password: hashedPassword,
         name: "Banson Admin 2",
         email: "banson2@ratatoing",
         pin: "1234",
