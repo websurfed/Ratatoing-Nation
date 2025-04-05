@@ -9,11 +9,13 @@ import {
   insertMediaSchema, 
   insertShopItemSchema, 
   insertEmailSchema,
-  transactions
+  transactions,
+  users
 } from "@shared/schema";
 import { db } from "./db";
 import { ZodError } from "zod";
 import { fromZodError } from "zod-validation-error";
+import { sql } from "drizzle-orm";
 
 // Helper to check if user is authenticated
 function isAuthenticated(req: Request, res: Response, next: Function) {
@@ -659,11 +661,72 @@ export async function registerRoutes(app: Express): Promise<Server> {
     if (req.user.rank === 'Banson') {
       // For admin users, fetch all transactions
       const allTransactions = await db.select().from(transactions).orderBy(transactions.createdAt, 'desc').limit(20);
-      return res.json(allTransactions);
+      
+      // Fetch all usernames for the transactions
+      const userIds = new Set<number>();
+      allTransactions.forEach(t => {
+        if (t.senderId) userIds.add(t.senderId);
+        if (t.recipientId) userIds.add(t.recipientId);
+      });
+      
+      const allUsers = await db
+        .select({ id: users.id, username: users.username, name: users.name })
+        .from(users)
+        .where(sql`${users.id} IN (${Array.from(userIds).join(',')})`);
+      
+      // Add user info to transactions
+      const transactionsWithUsers = allTransactions.map(t => {
+        const sender = allUsers.find(u => u.id === t.senderId);
+        const recipient = allUsers.find(u => u.id === t.recipientId);
+        return {
+          ...t,
+          senderUsername: sender?.username || null,
+          senderName: sender?.name || null,
+          recipientUsername: recipient?.username || null,
+          recipientName: recipient?.name || null
+        };
+      });
+      
+      return res.json(transactionsWithUsers);
     } else {
       // For regular users, only fetch their own transactions
       const userTransactions = await storage.getUserTransactions(req.user.id);
-      res.json(userTransactions);
+      
+      // Get unique user IDs from transactions
+      const userIds = new Set<number>();
+      userTransactions.forEach(t => {
+        if (t.senderId && t.senderId !== req.user.id) userIds.add(t.senderId);
+        if (t.recipientId && t.recipientId !== req.user.id) userIds.add(t.recipientId);
+      });
+      
+      // Fetch users information
+      const relatedUsers = userIds.size > 0 
+        ? await db
+            .select({ id: users.id, username: users.username, name: users.name })
+            .from(users)
+            .where(sql`${users.id} IN (${Array.from(userIds).join(',')})`)
+        : [];
+      
+      // Add user info to transactions
+      const transactionsWithUsers = userTransactions.map(t => {
+        const sender = t.senderId === req.user.id 
+          ? { username: req.user.username, name: req.user.name } 
+          : relatedUsers.find(u => u.id === t.senderId);
+        
+        const recipient = t.recipientId === req.user.id 
+          ? { username: req.user.username, name: req.user.name } 
+          : relatedUsers.find(u => u.id === t.recipientId);
+        
+        return {
+          ...t,
+          senderUsername: sender?.username || null,
+          senderName: sender?.name || null,
+          recipientUsername: recipient?.username || null,
+          recipientName: recipient?.name || null
+        };
+      });
+      
+      res.json(transactionsWithUsers);
     }
   });
 

@@ -488,15 +488,23 @@ export default function BankPage() {
                                       ? 'Received Payment' 
                                       : 'Sent Payment'
                                     : transaction.type === 'purchase'
-                                      ? 'Shop Purchase'
+                                      ? transaction.recipientId === user.id 
+                                        ? 'Item Sold' 
+                                        : 'Item Purchased'
                                       : 'Admin Operation'
                                   }
                                 </p>
                                 <p className="text-sm text-muted-foreground">
-                                  {transaction.description || (
+                                  {transaction.description ? (
+                                    transaction.description
+                                  ) : transaction.type === 'purchase' ? (
                                     transaction.recipientId === user.id 
-                                      ? `From: ${transaction.senderUsername || 'System'}` 
-                                      : `To: ${transaction.recipientUsername || 'System'}`
+                                      ? `Buyer: ${transaction.senderName || transaction.senderUsername || 'Unknown'}`
+                                      : `Seller: ${transaction.recipientName || transaction.recipientUsername || 'Unknown'}`
+                                  ) : (
+                                    transaction.recipientId === user.id 
+                                      ? `From: ${transaction.senderName || transaction.senderUsername || 'System'}`
+                                      : `To: ${transaction.recipientName || transaction.recipientUsername || 'System'}`
                                   )}
                                 </p>
                               </div>
