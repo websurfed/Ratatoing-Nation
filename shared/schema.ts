@@ -46,9 +46,11 @@ export const shopItems = pgTable("shop_items", {
   description: text("description"),
   price: integer("price").notNull(),
   imagePath: text("image_path").notNull(),
-  status: text("status").notNull().default('available'), // 'available', 'sold'
+  status: text("status").notNull().default('available'), // 'available', 'sold', 'reselling'
   createdAt: timestamp("created_at").notNull().defaultNow(),
   soldAt: timestamp("sold_at"),
+  originalPrice: integer("original_price"), // Track original purchase price for reselling
+  previousOwnerId: integer("previous_owner_id").references(() => users.id), // Track item history
 });
 
 // Email messages

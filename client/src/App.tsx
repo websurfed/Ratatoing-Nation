@@ -15,6 +15,7 @@ import ShopPage from "@/pages/shop-page";
 import BankPage from "@/pages/bank-page";
 import AdminPage from "@/pages/admin-page";
 import ProfilePage from "@/pages/profile-page";
+import InventoryPage from "@/pages/inventory-page";
 
 function Router() {
   return (
@@ -25,6 +26,7 @@ function Router() {
       <ProtectedRoute path="/email" component={EmailPage} />
       <ProtectedRoute path="/gallery" component={GalleryPage} />
       <ProtectedRoute path="/shop" component={ShopPage} />
+      <ProtectedRoute path="/inventory" component={InventoryPage} />
       <ProtectedRoute path="/bank" component={BankPage} />
       <ProtectedRoute path="/admin" component={AdminPage} />
       <ProtectedRoute path="/profile" component={ProfilePage} />

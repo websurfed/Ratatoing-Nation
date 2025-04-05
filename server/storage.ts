@@ -39,7 +39,9 @@ export interface IStorage {
   getShopItemById(id: number): Promise<ShopItem | undefined>;
   getAllShopItems(): Promise<ShopItem[]>;
   getUserShopItems(userId: number): Promise<ShopItem[]>;
+  getUserInventory(userId: number): Promise<ShopItem[]>;
   purchaseShopItem(itemId: number, buyerId: number): Promise<ShopItem | undefined>;
+  resellShopItem(itemId: number, newPrice: number): Promise<ShopItem | undefined>;
   deleteShopItem(id: number): Promise<boolean>;
   
   // Email operations
@@ -259,6 +261,19 @@ export class DatabaseStorage implements IStorage {
       .from(shopItems)
       .where(eq(shopItems.sellerId, userId));
   }
+  
+  async getUserInventory(userId: number): Promise<ShopItem[]> {
+    return await db
+      .select()
+      .from(shopItems)
+      .where(
+        and(
+          eq(shopItems.buyerId, userId),
+          eq(shopItems.status, 'sold')
+        )
+      )
+      .orderBy(desc(shopItems.soldAt));
+  }
 
   async purchaseShopItem(itemId: number, buyerId: number): Promise<ShopItem | undefined> {
     // Get item and check if available
@@ -292,13 +307,41 @@ export class DatabaseStorage implements IStorage {
         .set({
           buyerId,
           status: 'sold',
-          soldAt: new Date()
+          soldAt: new Date(),
+          originalPrice: item.price
         })
         .where(eq(shopItems.id, itemId))
         .returning();
         
       return updatedItem;
     });
+  }
+  
+  async resellShopItem(itemId: number, newPrice: number): Promise<ShopItem | undefined> {
+    // Get item and validate it's in the user's inventory (status: sold)
+    const item = await this.getShopItemById(itemId);
+    if (!item || item.status !== 'sold') return undefined;
+    
+    // Ensure the new price is at least the original purchase price
+    if (item.originalPrice && newPrice < item.originalPrice) {
+      return undefined;
+    }
+    
+    // Update the item for reselling
+    const [updatedItem] = await db
+      .update(shopItems)
+      .set({
+        sellerId: item.buyerId,
+        previousOwnerId: item.sellerId,
+        price: newPrice,
+        status: 'available',
+        buyerId: null,
+        soldAt: null
+      })
+      .where(eq(shopItems.id, itemId))
+      .returning();
+      
+    return updatedItem;
   }
 
   async deleteShopItem(id: number): Promise<boolean> {

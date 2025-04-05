@@ -379,6 +379,57 @@ export async function registerRoutes(app: Express): Promise<Server> {
     res.json({ message: "Item deleted successfully" });
   });
 
+  // ===== Inventory Routes =====
+  // Get user's inventory
+  app.get("/api/inventory", isAuthenticated, async (req, res) => {
+    try {
+      const userId = req.user.id;
+      const inventory = await storage.getUserInventory(userId);
+      res.json(inventory);
+    } catch (error) {
+      res.status(500).json({ message: "Error fetching inventory" });
+    }
+  });
+  
+  // Resell item from inventory
+  app.post("/api/inventory/:id/resell", isAuthenticated, async (req, res) => {
+    try {
+      const itemId = parseInt(req.params.id);
+      const { price } = req.body;
+      
+      if (!price || isNaN(parseInt(price)) || parseInt(price) <= 0) {
+        return res.status(400).json({ message: "Invalid price" });
+      }
+      
+      // Get the item to verify ownership
+      const item = await storage.getShopItemById(itemId);
+      
+      if (!item) {
+        return res.status(404).json({ message: "Item not found" });
+      }
+      
+      if (item.buyerId !== req.user.id) {
+        return res.status(403).json({ message: "You don't own this item" });
+      }
+      
+      if (item.status !== 'sold') {
+        return res.status(400).json({ message: "Item is not available for resale" });
+      }
+      
+      const resellingItem = await storage.resellShopItem(itemId, parseInt(price));
+      
+      if (!resellingItem) {
+        return res.status(400).json({ 
+          message: "Unable to resell item. Make sure the price is at least the original purchase price."
+        });
+      }
+      
+      res.json(resellingItem);
+    } catch (error) {
+      res.status(500).json({ message: "Error reselling item" });
+    }
+  });
+  
   // ===== Email Routes =====
   // Send email
   app.post("/api/emails", isAuthenticated, async (req, res) => {

@@ -13,7 +13,8 @@ import {
   Shield, 
   LogOut,
   Pizza,
-  User
+  User,
+  Package
 } from "lucide-react";
 import { Separator } from "@/components/ui/separator";
 import { Button } from "@/components/ui/button";
@@ -178,6 +179,19 @@ export function Sidebar({ open, setOpen }: SidebarProps) {
                 }`}>
                   <ShoppingCart className="w-5 h-5" />
                   <span className="ml-3">Shop</span>
+                </a>
+              </Link>
+            </li>
+            
+            <li>
+              <Link href="/inventory">
+                <a className={`flex items-center px-4 py-2 rounded-lg transition-colors cursor-pointer ${
+                  location === "/inventory" 
+                    ? "bg-primary text-primary-foreground" 
+                    : "hover:bg-accent hover:text-accent-foreground"
+                }`}>
+                  <Package className="w-5 h-5" />
+                  <span className="ml-3">Inventory</span>
                 </a>
               </Link>
             </li>
