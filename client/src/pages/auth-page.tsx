@@ -60,6 +60,7 @@ export default function AuthPage() {
       password: "",
       confirmPassword: "",
       pin: "",
+      description: "",
       email: "", // This will be overwritten by the server, but needs to be here for type safety
       pocketSniffles: 0, // These will be set by the server
       rank: "Nibbler" as const,
@@ -326,6 +327,24 @@ export default function AuthPage() {
                             placeholder="••••" 
                             maxLength={4} 
                             pattern="[0-9]{4}"
+                            {...field} 
+                          />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+
+                  <FormField
+                    control={registerForm.control}
+                    name="description"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>About You</FormLabel>
+                        <FormControl>
+                          <textarea 
+                            className="flex min-h-[80px] w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                            placeholder="Tell us about yourself and why you want to join Ratatoing Nation..." 
                             {...field} 
                           />
                         </FormControl>

@@ -185,17 +185,17 @@ export default function ApprovalsPage() {
                     <thead>
                       <tr className="bg-accent/50">
                         <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider">User</th>
+                        <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider">Description</th>
                         <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider">Requested On</th>
-                        <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider">Initial Rank</th>
                         <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider">Actions</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-border">
                       {pendingUsers.map((pendingUser) => (
                         <tr key={pendingUser.id}>
-                          <td className="px-6 py-4 whitespace-nowrap">
+                          <td className="px-6 py-4">
                             <div className="flex items-center">
-                              <Avatar className="h-10 w-10">
+                              <Avatar className="h-10 w-10 flex-shrink-0">
                                 <AvatarImage src={pendingUser.profilePicture || ""} alt={pendingUser.name} />
                                 <AvatarFallback className="bg-primary/20 text-primary">
                                   {getInitials(pendingUser.name || pendingUser.username)}
@@ -204,7 +204,19 @@ export default function ApprovalsPage() {
                               <div className="ml-4">
                                 <div className="text-sm font-medium">{pendingUser.name || pendingUser.username}</div>
                                 <div className="text-sm text-muted-foreground">{pendingUser.username}@ratatoing</div>
+                                <div className="text-xs mt-1">
+                                  <Badge variant="outline" className="text-xs">
+                                    {pendingUser.rank}
+                                  </Badge>
+                                </div>
                               </div>
+                            </div>
+                          </td>
+                          <td className="px-6 py-4">
+                            <div className="text-sm max-w-md">
+                              {pendingUser.description || 
+                                <span className="text-muted-foreground italic">No description provided</span>
+                              }
                             </div>
                           </td>
                           <td className="px-6 py-4 whitespace-nowrap">
@@ -212,11 +224,6 @@ export default function ApprovalsPage() {
                             <div className="text-sm text-muted-foreground">
                               {format(new Date(pendingUser.createdAt), 'HH:mm')}
                             </div>
-                          </td>
-                          <td className="px-6 py-4 whitespace-nowrap">
-                            <Badge variant="outline" className="text-xs">
-                              {pendingUser.rank}
-                            </Badge>
                           </td>
                           <td className="px-6 py-4 whitespace-nowrap">
                             <div className="flex space-x-2">

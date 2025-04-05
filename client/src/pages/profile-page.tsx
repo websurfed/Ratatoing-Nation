@@ -15,9 +15,10 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useMutation } from "@tanstack/react-query";
 
-// Create a simpler profile update schema with just name
+// Create a profile update schema with name and description
 const profileUpdateSchema = z.object({
-  name: z.string().min(1, "Name is required")
+  name: z.string().min(1, "Name is required"),
+  description: z.string().optional()
 });
 
 // Create a new type that includes the current password
@@ -48,7 +49,8 @@ export default function ProfilePage() {
   const profileForm = useForm<ProfileFormValues>({
     resolver: zodResolver(profileUpdateSchema),
     defaultValues: {
-      name: user?.name || ""
+      name: user?.name || "",
+      description: user?.description || ""
     }
   });
 
@@ -56,7 +58,8 @@ export default function ProfilePage() {
   useEffect(() => {
     if (user) {
       profileForm.reset({
-        name: user.name || ""
+        name: user.name || "",
+        description: user.description || ""
       });
     }
   }, [user, profileForm]);
@@ -84,7 +87,8 @@ export default function ProfilePage() {
       });
       queryClient.invalidateQueries({ queryKey: ['/api/user'] });
       profileForm.reset({
-        name: user?.name || ""
+        name: user?.name || "",
+        description: user?.description || ""
       });
     },
     onError: (error: Error) => {
@@ -221,6 +225,26 @@ export default function ProfilePage() {
                           )}
                         />
                         
+                        <FormField
+                          control={profileForm.control}
+                          name="description"
+                          render={({ field }) => (
+                            <FormItem>
+                              <FormLabel>About Me</FormLabel>
+                              <FormControl>
+                                <textarea 
+                                  className="flex min-h-[80px] w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                                  placeholder="Tell us about yourself..."
+                                  {...field}
+                                />
+                              </FormControl>
+                              <FormDescription>
+                                A brief description about yourself to share with other members
+                              </FormDescription>
+                              <FormMessage />
+                            </FormItem>
+                          )}
+                        />
 
 
                         
@@ -267,6 +291,12 @@ export default function ProfilePage() {
                           {new Date(user.createdAt).toLocaleDateString()}
                         </span>
                       </div>
+                      {user.description && (
+                        <div className="mt-4">
+                          <span className="text-muted-foreground">About Me:</span>
+                          <p className="mt-1 text-sm">{user.description}</p>
+                        </div>
+                      )}
                     </div>
                   </CardContent>
                 </Card>

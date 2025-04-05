@@ -88,6 +88,48 @@ export async function registerRoutes(app: Express): Promise<Server> {
     const { password, ...userWithoutPassword } = user;
     res.json(userWithoutPassword);
   });
+  
+  // Unban user (admin only)
+  app.post("/api/users/:id/unban", isAdmin, async (req, res) => {
+    const userId = parseInt(req.params.id);
+    
+    const user = await storage.unbanUser(userId);
+    
+    if (!user) {
+      return res.status(404).json({ message: "User not found" });
+    }
+    
+    const { password, ...userWithoutPassword } = user;
+    res.json(userWithoutPassword);
+  });
+  
+  // Delete user (admin only)
+  app.delete("/api/users/:id", isAdmin, async (req, res) => {
+    const userId = parseInt(req.params.id);
+    
+    // Check if trying to delete yourself
+    if (userId === req.user.id) {
+      return res.status(400).json({ message: "You cannot delete your own account" });
+    }
+    
+    // Check if user is also a Banson admin (prevent deleting other admins)
+    const userToDelete = await storage.getUser(userId);
+    if (!userToDelete) {
+      return res.status(404).json({ message: "User not found" });
+    }
+    
+    if (userToDelete.rank === 'Banson') {
+      return res.status(403).json({ message: "Cannot delete another administrator" });
+    }
+    
+    const success = await storage.deleteUser(userId);
+    
+    if (!success) {
+      return res.status(500).json({ message: "Failed to delete user" });
+    }
+    
+    res.json({ message: "User deleted successfully" });
+  });
 
   // Update user (admin only or self)
   app.patch("/api/users/:id", isAuthenticated, async (req, res) => {

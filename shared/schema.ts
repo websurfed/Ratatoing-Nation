@@ -19,10 +19,11 @@ export const users = pgTable("users", {
   email: text("email").notNull().unique(),
   profilePicture: text("profile_picture"),
   pin: text("pin").notNull(),
+  description: text("description"),
   rank: text("rank").$type<UserRank>().notNull().default('Nibbler'),
   status: text("status").$type<UserStatus>().notNull().default('pending'),
   pocketSniffles: integer("pocket_sniffles").notNull().default(0),
-  approvedBy: integer("approved_by").references(() => users.id),
+  approvedBy: integer("approved_by").references((): any => users.id),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 
@@ -80,6 +81,8 @@ export const insertUserSchema = createInsertSchema(users).omit({
   id: true,
   approvedBy: true,
   createdAt: true
+}).extend({
+  description: z.string().min(10, "Please provide a description of at least 10 characters").max(500, "Description should not exceed 500 characters")
 });
 
 export const loginUserSchema = z.object({

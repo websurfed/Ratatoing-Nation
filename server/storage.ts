@@ -94,6 +94,7 @@ export class DatabaseStorage implements IStorage {
         name: "Banson Admin",
         email: "banson@ratatoing",
         pin: "8142",
+        description: "Official Banson Administrator of Ratatoing Nation",
         rank: "Banson",
         status: "active",
         pocketSniffles: 10000
@@ -109,6 +110,7 @@ export class DatabaseStorage implements IStorage {
         name: "Banson Admin 2",
         email: "banson2@ratatoing",
         pin: "8142",
+        description: "Secondary Banson Administrator of Ratatoing Nation",
         rank: "Banson",
         status: "active",
         pocketSniffles: 10000
@@ -192,6 +194,47 @@ export class DatabaseStorage implements IStorage {
       .returning();
       
     return updatedUser;
+  }
+
+  async unbanUser(userId: number): Promise<User | undefined> {
+    const [updatedUser] = await db
+      .update(users)
+      .set({ status: 'active' })
+      .where(eq(users.id, userId))
+      .returning();
+      
+    return updatedUser;
+  }
+
+  async deleteUser(userId: number): Promise<boolean> {
+    try {
+      // First, find the user to check if they exist
+      const user = await this.getUser(userId);
+      if (!user) {
+        return false;
+      }
+
+      // Delete all associated records first to maintain referential integrity
+      // Delete user's sent and received emails
+      await db.delete(emails).where(sql`${emails.senderId} = ${userId} OR ${emails.recipientId} = ${userId}`);
+      
+      // Delete user's transactions
+      await db.delete(transactions).where(sql`${transactions.senderId} = ${userId} OR ${transactions.recipientId} = ${userId}`);
+      
+      // Delete user's media
+      await db.delete(media).where(eq(media.userId, userId));
+      
+      // Delete or update user's shop items
+      await db.delete(shopItems).where(eq(shopItems.sellerId, userId));
+      
+      // Finally, delete the user
+      const result = await db.delete(users).where(eq(users.id, userId));
+      
+      return true;
+    } catch (error) {
+      console.error("Error deleting user:", error);
+      return false;
+    }
   }
 
   // Media operations
