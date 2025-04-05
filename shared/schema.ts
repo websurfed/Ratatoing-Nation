@@ -111,11 +111,15 @@ export const insertShopItemSchema = createInsertSchema(shopItems).omit({
   soldAt: true
 });
 
-export const insertEmailSchema = createInsertSchema(emails).omit({
-  id: true,
-  read: true,
-  createdAt: true
-});
+export const insertEmailSchema = createInsertSchema(emails)
+  .omit({
+    id: true,
+    read: true,
+    createdAt: true
+  })
+  .extend({
+    body: z.string().min(1, "Message is required").max(1500, "Message cannot exceed 1500 characters")
+  });
 
 export const insertTransactionSchema = createInsertSchema(transactions).omit({
   id: true,

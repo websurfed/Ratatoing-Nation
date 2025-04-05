@@ -1,6 +1,8 @@
 import { Link, useLocation } from "wouter";
+import { useState, useEffect } from "react";
 import { ThemeToggle } from "../ui/theme-toggle";
 import { useAuth } from "@/hooks/use-auth";
+import { useQuery } from "@tanstack/react-query";
 import { 
   Home, 
   UserCheck, 
@@ -27,6 +29,26 @@ interface SidebarProps {
 export function Sidebar({ open, setOpen }: SidebarProps) {
   const [location] = useLocation();
   const { user, logoutMutation } = useAuth();
+  const [unreadCount, setUnreadCount] = useState(0);
+
+  // Fetch unread emails count
+  const { data: inboxEmails = [] } = useQuery({
+    queryKey: ['/api/emails/inbox'],
+    queryFn: async () => {
+      const response = await fetch('/api/emails/inbox');
+      if (!response.ok) throw new Error('Failed to fetch emails');
+      return response.json();
+    },
+    enabled: !!user,
+    refetchInterval: 10000 // Auto-refresh every 10 seconds
+  });
+
+  // Update unread count whenever inbox changes
+  useEffect(() => {
+    if (inboxEmails && Array.isArray(inboxEmails)) {
+      setUnreadCount(inboxEmails.filter((email: any) => !email.read).length);
+    }
+  }, [inboxEmails]);
   
   if (!user) return null;
   
@@ -125,6 +147,11 @@ export function Sidebar({ open, setOpen }: SidebarProps) {
                 }`}>
                   <Mail className="w-5 h-5" />
                   <span className="ml-3">Email</span>
+                  {unreadCount > 0 && (
+                    <Badge className="ml-auto" variant="default">
+                      {unreadCount}
+                    </Badge>
+                  )}
                 </a>
               </Link>
             </li>

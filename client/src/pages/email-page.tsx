@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useAuth } from "@/hooks/use-auth";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Sidebar } from "@/components/layout/sidebar";
@@ -42,6 +42,8 @@ export default function EmailPage() {
   const [activeFolder, setActiveFolder] = useState<'inbox' | 'sent' | 'trash'>('inbox');
   const [selectedEmail, setSelectedEmail] = useState<any | null>(null);
   const [composeOpen, setComposeOpen] = useState(false);
+  const [lastRefreshed, setLastRefreshed] = useState<Date>(new Date());
+  const refreshTimerRef = useRef<NodeJS.Timeout | null>(null);
 
   // Form for composing new email
   const form = useForm<EmailFormValues>({
@@ -177,6 +179,31 @@ export default function EmailPage() {
     sendEmailMutation.mutate(data);
   };
 
+  // Auto-refresh emails every 10 seconds
+  useEffect(() => {
+    // Clear any existing timer when component mounts or dependencies change
+    if (refreshTimerRef.current) {
+      clearInterval(refreshTimerRef.current);
+    }
+    
+    // Set up new timer
+    refreshTimerRef.current = setInterval(() => {
+      if (activeFolder === 'inbox') {
+        refetchInbox();
+      } else if (activeFolder === 'sent') {
+        refetchSent();
+      }
+      setLastRefreshed(new Date());
+    }, 10000); // 10 seconds
+    
+    // Cleanup on unmount
+    return () => {
+      if (refreshTimerRef.current) {
+        clearInterval(refreshTimerRef.current);
+      }
+    };
+  }, [activeFolder, refetchInbox, refetchSent]);
+  
   // Get current emails based on active folder
   const currentEmails = activeFolder === 'inbox' ? inboxEmails : activeFolder === 'sent' ? sentEmails : [];
   const isLoading = activeFolder === 'inbox' ? loadingInbox : loadingSent;
@@ -288,12 +315,20 @@ export default function EmailPage() {
                 <Card className="bg-card/30 backdrop-blur-lg h-full">
                   <CardHeader className="border-b">
                     <div className="flex items-center justify-between">
-                      <CardTitle>{activeFolder === 'inbox' ? 'Inbox' : activeFolder === 'sent' ? 'Sent' : 'Trash'}</CardTitle>
+                      <div>
+                        <CardTitle>{activeFolder === 'inbox' ? 'Inbox' : activeFolder === 'sent' ? 'Sent' : 'Trash'}</CardTitle>
+                        <p className="text-xs text-muted-foreground mt-1">
+                          Last updated: {format(lastRefreshed, 'h:mm:ss a')}
+                        </p>
+                      </div>
                       <div className="flex space-x-2">
                         <Button 
                           size="icon" 
                           variant="ghost"
-                          onClick={() => activeFolder === 'inbox' ? refetchInbox() : refetchSent()}
+                          onClick={() => {
+                            activeFolder === 'inbox' ? refetchInbox() : refetchSent();
+                            setLastRefreshed(new Date());
+                          }}
                         >
                           <RefreshCw className="h-4 w-4" />
                         </Button>
@@ -355,7 +390,9 @@ export default function EmailPage() {
                       
                       <div className="p-6 flex-grow">
                         <div className="prose prose-sm dark:prose-invert max-w-none">
-                          {selectedEmail.body}
+                          {selectedEmail.body.split('\n').map((paragraph, index) => (
+                            <p key={index}>{paragraph}</p>
+                          ))}
                         </div>
                       </div>
                       
