@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useAuth } from "@/hooks/use-auth";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Sidebar } from "@/components/layout/sidebar";
@@ -62,6 +62,22 @@ export default function BankPage() {
   const { toast } = useToast();
   const [authenticated, setAuthenticated] = useState(false);
   const [pinInput, setPinInput] = useState("");
+  const [lastRefreshed, setLastRefreshed] = useState<Date | null>(null);
+
+  // Auto-refresh data every 30 seconds when authenticated
+  useEffect(() => {
+    if (authenticated && user) {
+      // Initial refresh when first authenticated
+      setLastRefreshed(new Date());
+      
+      const interval = setInterval(() => {
+        // Refresh data using our custom refresh function
+        refreshData();
+      }, 30000); // 30 seconds
+
+      return () => clearInterval(interval);
+    }
+  }, [authenticated, user]);
 
   // Form for PIN verification
   const pinForm = useForm<PinFormValues>({
@@ -91,6 +107,18 @@ export default function BankPage() {
     },
     enabled: !!user && authenticated
   });
+  
+  // Create a custom refresh function to track when data is refreshed
+  const refreshData = () => {
+    refetch();
+    queryClient.invalidateQueries({ queryKey: ['/api/user'] });
+    setLastRefreshed(new Date());
+    toast({
+      title: "Account Updated",
+      description: "Your bank information has been refreshed.",
+      duration: 3000, // Hide after 3 seconds
+    });
+  };
 
   // Verify PIN mutation
   const verifyPinMutation = useMutation({
@@ -127,8 +155,9 @@ export default function BankPage() {
         description: "The funds have been transferred successfully."
       });
       transferForm.reset();
-      queryClient.invalidateQueries({ queryKey: ['/api/transactions'] });
-      queryClient.invalidateQueries({ queryKey: ['/api/user'] });
+      
+      // Use our refresh function to update data and timestamp
+      refreshData();
     },
     onError: (error: Error) => {
       toast({
@@ -295,10 +324,7 @@ export default function BankPage() {
                     <CardContent className="p-6">
                       <div className="flex items-center justify-between mb-4">
                         <h3 className="text-xl font-semibold">Account Balance</h3>
-                        <Button variant="ghost" size="icon" onClick={() => {
-                          refetch();
-                          queryClient.invalidateQueries({ queryKey: ['/api/user'] });
-                        }}>
+                        <Button variant="ghost" size="icon" onClick={refreshData}>
                           <RefreshCw className="h-4 w-4 text-primary" />
                         </Button>
                       </div>
@@ -323,6 +349,12 @@ export default function BankPage() {
                           <span>Email:</span>
                           <span className="font-medium">{user.username}@ratatoing</span>
                         </div>
+                        {lastRefreshed && (
+                          <div className="flex justify-between text-xs text-muted-foreground mt-1">
+                            <span>Auto-refreshes every 30s</span>
+                            <span>Last updated: {format(lastRefreshed, 'h:mm:ss a')}</span>
+                          </div>
+                        )}
                       </div>
                     </CardContent>
                   </Card>

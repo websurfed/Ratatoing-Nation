@@ -233,7 +233,12 @@ export default function AdminPage() {
                   <p className="text-sm text-muted-foreground mb-4">
                     Manage user accounts, change ranks, and modify permissions.
                   </p>
-                  <Button className="w-full">Access</Button>
+                  <Button 
+                    className="w-full" 
+                    onClick={() => document.querySelector(".user-management-section")?.scrollIntoView({ behavior: 'smooth' })}
+                  >
+                    Access
+                  </Button>
                 </CardContent>
               </Card>
               
@@ -248,7 +253,12 @@ export default function AdminPage() {
                   <p className="text-sm text-muted-foreground mb-4">
                     Control Pocket Sniffles distribution, transactions, and economy.
                   </p>
-                  <Button className="w-full">Access</Button>
+                  <Button 
+                    className="w-full" 
+                    onClick={() => document.querySelector(".currency-management-section")?.scrollIntoView({ behavior: 'smooth' })}
+                  >
+                    Access
+                  </Button>
                 </CardContent>
               </Card>
               
@@ -263,13 +273,18 @@ export default function AdminPage() {
                   <p className="text-sm text-muted-foreground mb-4">
                     Review and moderate gallery content and shop listings.
                   </p>
-                  <Button className="w-full">Access</Button>
+                  <Button 
+                    className="w-full"
+                    onClick={() => document.querySelector(".content-moderation-section")?.scrollIntoView({ behavior: 'smooth' })}
+                  >
+                    Access
+                  </Button>
                 </CardContent>
               </Card>
             </div>
             
             {/* User Management Panel */}
-            <Card className="bg-card/30 backdrop-blur-lg overflow-hidden">
+            <Card className="bg-card/30 backdrop-blur-lg overflow-hidden user-management-section">
               <CardHeader className="border-b">
                 <div className="flex items-center justify-between">
                   <CardTitle>User Management</CardTitle>
@@ -396,7 +411,10 @@ export default function AdminPage() {
                                 size="sm"
                                 variant="ghost"
                                 className="h-8 w-8 p-0 text-amber-500"
-                                disabled={false}
+                                onClick={() => {
+                                  // Open profile edit dialog or navigate to profile edit page
+                                  window.location.href = `/admin/edit-profile/${userItem.id}`;
+                                }}
                               >
                                 <UserPen className="h-4 w-4" />
                               </Button>
@@ -424,7 +442,7 @@ export default function AdminPage() {
             </Card>
             
             {/* System Logs */}
-            <Card className="bg-card/30 backdrop-blur-lg">
+            <Card className="bg-card/30 backdrop-blur-lg content-moderation-section">
               <CardHeader className="border-b">
                 <CardTitle>System Logs</CardTitle>
               </CardHeader>
