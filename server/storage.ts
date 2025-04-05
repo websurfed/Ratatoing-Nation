@@ -319,29 +319,84 @@ export class DatabaseStorage implements IStorage {
     return email;
   }
 
-  async getEmailById(id: number): Promise<Email | undefined> {
-    const [email] = await db
+  async getEmailById(id: number): Promise<any | undefined> {
+    // First get the email
+    const [basicEmail] = await db
       .select()
       .from(emails)
       .where(eq(emails.id, id));
       
-    return email;
+    if (!basicEmail) return undefined;
+    
+    // Now fetch sender and recipient data separately
+    const [sender] = await db
+      .select()
+      .from(users)
+      .where(eq(users.id, basicEmail.senderId));
+      
+    const [recipient] = await db
+      .select()
+      .from(users)
+      .where(eq(users.id, basicEmail.recipientId));
+      
+    // Combine the data
+    return {
+      ...basicEmail,
+      senderName: sender?.name || "Unknown",
+      senderUsername: sender?.username || "unknown",
+      recipientName: recipient?.name || "Unknown",
+      recipientUsername: recipient?.username || "unknown"
+    };
   }
 
-  async getUserEmails(userId: number): Promise<Email[]> {
-    return await db
+  async getUserEmails(userId: number): Promise<any[]> {
+    // Get all emails sent to this user
+    const userEmails = await db
       .select()
       .from(emails)
       .where(eq(emails.recipientId, userId))
       .orderBy(desc(emails.createdAt));
+    
+    // For each email, get the sender info
+    const result = await Promise.all(userEmails.map(async (email) => {
+      const [sender] = await db
+        .select()
+        .from(users)
+        .where(eq(users.id, email.senderId));
+      
+      return {
+        ...email,
+        senderName: sender?.name || "Unknown",
+        senderUsername: sender?.username || "unknown"
+      };
+    }));
+    
+    return result;
   }
 
-  async getUserSentEmails(userId: number): Promise<Email[]> {
-    return await db
+  async getUserSentEmails(userId: number): Promise<any[]> {
+    // Get all emails sent by this user
+    const sentEmails = await db
       .select()
       .from(emails)
       .where(eq(emails.senderId, userId))
       .orderBy(desc(emails.createdAt));
+    
+    // For each email, get the recipient info
+    const result = await Promise.all(sentEmails.map(async (email) => {
+      const [recipient] = await db
+        .select()
+        .from(users)
+        .where(eq(users.id, email.recipientId));
+      
+      return {
+        ...email,
+        recipientName: recipient?.name || "Unknown",
+        recipientUsername: recipient?.username || "unknown"
+      };
+    }));
+    
+    return result;
   }
 
   async markEmailAsRead(id: number): Promise<Email | undefined> {

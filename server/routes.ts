@@ -507,8 +507,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(401).json({ message: "Current password is incorrect" });
       }
       
+      // Ensure email cannot be updated (only name is allowed)
+      const { name } = updateData;
+      const safeUpdateData = { name };
+      
       // Update user profile
-      const updatedUser = await storage.updateUser(req.user.id, updateData);
+      const updatedUser = await storage.updateUser(req.user.id, safeUpdateData);
       
       if (!updatedUser) {
         return res.status(404).json({ message: "Failed to update profile" });

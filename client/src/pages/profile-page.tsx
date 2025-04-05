@@ -5,7 +5,6 @@ import { z } from "zod";
 import { Loader2, User as UserIcon } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/use-auth";
-import { updateUserSchema, type UpdateUser } from "@shared/schema";
 import { Sidebar } from "@/components/layout/sidebar";
 import { MobileHeader } from "@/components/layout/mobile-header";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -16,8 +15,9 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useMutation } from "@tanstack/react-query";
 
-// Extend the update schema with required validation for the current password
-const profileUpdateSchema = updateUserSchema.extend({
+// Create a simpler profile update schema with just name and password
+const profileUpdateSchema = z.object({
+  name: z.string().min(1, "Name is required"),
   currentPassword: z.string().min(1, "Please enter your current password to verify changes")
 });
 
@@ -50,7 +50,6 @@ export default function ProfilePage() {
     resolver: zodResolver(profileUpdateSchema),
     defaultValues: {
       name: user?.name || "",
-      email: user?.email || "",
       currentPassword: ""
     }
   });
@@ -60,7 +59,6 @@ export default function ProfilePage() {
     if (user) {
       profileForm.reset({
         name: user.name || "",
-        email: user.email || "",
         currentPassword: ""
       });
     }
@@ -90,7 +88,6 @@ export default function ProfilePage() {
       queryClient.invalidateQueries({ queryKey: ['/api/user'] });
       profileForm.reset({
         name: user?.name || "",
-        email: user?.email || "",
         currentPassword: ""
       });
     },
@@ -224,23 +221,7 @@ export default function ProfilePage() {
                           )}
                         />
                         
-                        <FormField
-                          control={profileForm.control}
-                          name="email"
-                          render={({ field }) => (
-                            <FormItem>
-                              <FormLabel>Email</FormLabel>
-                              <FormControl>
-                                <Input placeholder="Your email" {...field} />
-                              </FormControl>
-                              <FormDescription>
-                                This is used for notifications and account recovery
-                              </FormDescription>
-                              <FormMessage />
-                            </FormItem>
-                          )}
-                        />
-                        
+
                         <FormField
                           control={profileForm.control}
                           name="currentPassword"

@@ -87,7 +87,15 @@ export const loginUserSchema = z.object({
 
 export const updateUserSchema = createInsertSchema(users).partial().omit({
   id: true,
-  createdAt: true
+  createdAt: true,
+  email: true,
+  username: true,
+  password: true,
+  pin: true,
+  rank: true,
+  status: true,
+  pocketSniffles: true,
+  approvedBy: true
 });
 
 export const insertMediaSchema = createInsertSchema(media).omit({
