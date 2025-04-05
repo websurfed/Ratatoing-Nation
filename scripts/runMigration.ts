@@ -1,6 +1,10 @@
-import { Client } from 'pg';
-import fs from 'fs';
-import path from 'path';
+import pg from 'pg';
+import fs from 'fs/promises';
+import { dirname, join } from 'path';
+import { fileURLToPath } from 'url';
+
+const { Client } = pg;
+const __dirname = dirname(fileURLToPath(import.meta.url));
 
 async function runMigration() {
   const client = new Client({
@@ -10,8 +14,8 @@ async function runMigration() {
 
   try {
     await client.connect();
-    const migration = fs.readFileSync(
-      path.join(__dirname, '../migrations/002_add_job_system.sql'),
+    const migration = await fs.readFile(
+      join(__dirname, '../migrations/0002_add_job_columns.sql'),
       'utf8'
     );
     await client.query(migration);
