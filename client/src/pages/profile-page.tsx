@@ -514,7 +514,7 @@ export default function ProfilePage() {
                       
                       <form 
                         encType="multipart/form-data" 
-                        onSubmit={(e) => {
+                        onSubmit={async (e) => {
                           e.preventDefault();
                           const formData = new FormData(e.currentTarget);
                           
@@ -539,33 +539,41 @@ export default function ProfilePage() {
                             return;
                           }
                           
-                          // Send the file to the server
-                          fetch('/api/users/profile-picture', {
-                            method: 'POST',
-                            body: formData,
-                            credentials: 'include'
-                          })
-                          .then(res => {
+                          // Show upload in progress
+                          toast({
+                            title: "Uploading...",
+                            description: "Your profile picture is being uploaded"
+                          });
+                          
+                          try {
+                            // Send the file to the server
+                            const res = await fetch('/api/users/profile-picture', {
+                              method: 'POST',
+                              body: formData,
+                              credentials: 'include'
+                            });
+                            
                             if (!res.ok) {
-                              throw new Error('Failed to upload profile picture');
+                              const errorData = await res.json().catch(() => ({}));
+                              throw new Error(errorData.message || 'Failed to upload profile picture');
                             }
-                            return res.json();
-                          })
-                          .then(() => {
+                            
+                            await res.json();
+                            
                             toast({
                               title: "Profile picture updated",
                               description: "Your profile picture has been updated successfully"
                             });
+                            
                             // Refresh user data
                             queryClient.invalidateQueries({ queryKey: ['/api/user'] });
-                          })
-                          .catch(error => {
+                          } catch (error: any) {
                             toast({
                               title: "Upload failed",
-                              description: error.message,
+                              description: error.message || "An error occurred during upload",
                               variant: "destructive"
                             });
-                          });
+                          }
                         }}
                         className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto"
                       >
@@ -596,24 +604,31 @@ export default function ProfilePage() {
                             type="button" 
                             variant="outline" 
                             className="text-destructive hover:text-destructive"
-                            onClick={() => {
-                              // Call API to remove profile picture
-                              apiRequest("DELETE", "/api/users/profile-picture")
-                                .then(() => {
-                                  toast({
-                                    title: "Profile picture removed",
-                                    description: "Your profile picture has been removed"
-                                  });
-                                  // Refresh user data
-                                  queryClient.invalidateQueries({ queryKey: ['/api/user'] });
-                                })
-                                .catch(error => {
-                                  toast({
-                                    title: "Remove failed",
-                                    description: error.message,
-                                    variant: "destructive"
-                                  });
+                            onClick={async () => {
+                              try {
+                                // Show deleting in progress
+                                toast({
+                                  title: "Removing...",
+                                  description: "Your profile picture is being removed"
                                 });
+                                
+                                // Call API to remove profile picture
+                                await apiRequest("DELETE", "/api/users/profile-picture");
+                                
+                                toast({
+                                  title: "Profile picture removed",
+                                  description: "Your profile picture has been removed"
+                                });
+                                
+                                // Refresh user data
+                                queryClient.invalidateQueries({ queryKey: ['/api/user'] });
+                              } catch (error: any) {
+                                toast({
+                                  title: "Remove failed",
+                                  description: error.message || "An error occurred during removal",
+                                  variant: "destructive"
+                                });
+                              }
                             }}
                           >
                             Remove

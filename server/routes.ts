@@ -118,58 +118,84 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // Upload profile picture
   app.post("/api/users/profile-picture", isAuthenticated, upload.single('profilePicture'), async (req, res) => {
-    if (!req.file) {
-      return res.status(400).json({ message: "No file uploaded" });
-    }
-    
-    // Get the user to check if they already have a profile picture
-    const user = await storage.getUser(req.user.id);
-    if (user && user.profilePicture) {
-      // Delete the old profile picture
-      try {
-        const oldFilePath = path.join(process.cwd(), user.profilePicture);
-        if (fs.existsSync(oldFilePath)) {
-          fs.unlinkSync(oldFilePath);
-        }
-      } catch (error) {
-        console.error("Error deleting old profile picture:", error);
+    try {
+      if (!req.file) {
+        return res.status(400).json({ message: "No file uploaded" });
       }
+      
+      // Get the user to check if they already have a profile picture
+      const user = await storage.getUser(req.user.id);
+      if (!user) {
+        return res.status(404).json({ message: "User not found" });
+      }
+      
+      if (user.profilePicture) {
+        // Delete the old profile picture
+        try {
+          const oldFilePath = path.join(process.cwd(), user.profilePicture);
+          if (fs.existsSync(oldFilePath)) {
+            fs.unlinkSync(oldFilePath);
+          }
+        } catch (error) {
+          console.error("Error deleting old profile picture:", error);
+        }
+      }
+      
+      const filePath = getFilePath('profile', req.file.filename);
+      
+      const updatedUser = await storage.updateUser(req.user.id, {
+        profilePicture: filePath
+      });
+      
+      if (!updatedUser) {
+        return res.status(500).json({ message: "Failed to update profile picture" });
+      }
+      
+      res.json({ path: filePath });
+    } catch (error) {
+      console.error("Error uploading profile picture:", error);
+      res.status(500).json({ message: "An error occurred while uploading profile picture" });
     }
-    
-    const filePath = getFilePath('profile', req.file.filename);
-    
-    await storage.updateUser(req.user.id, {
-      profilePicture: filePath
-    });
-    
-    res.json({ path: filePath });
   });
   
   // Delete profile picture
   app.delete("/api/users/profile-picture", isAuthenticated, async (req, res) => {
-    // Get the user to check if they have a profile picture
-    const user = await storage.getUser(req.user.id);
-    
-    if (!user || !user.profilePicture) {
-      return res.status(404).json({ message: "No profile picture found" });
-    }
-    
-    // Delete the profile picture file
     try {
-      const filePath = path.join(process.cwd(), user.profilePicture);
-      if (fs.existsSync(filePath)) {
-        fs.unlinkSync(filePath);
+      // Get the user to check if they have a profile picture
+      const user = await storage.getUser(req.user.id);
+      
+      if (!user) {
+        return res.status(404).json({ message: "User not found" });
       }
+      
+      if (!user.profilePicture) {
+        return res.status(404).json({ message: "No profile picture found" });
+      }
+      
+      // Delete the profile picture file
+      try {
+        const filePath = path.join(process.cwd(), user.profilePicture);
+        if (fs.existsSync(filePath)) {
+          fs.unlinkSync(filePath);
+        }
+      } catch (error) {
+        console.error("Error deleting profile picture:", error);
+      }
+      
+      // Update the user to remove the profile picture reference
+      const updatedUser = await storage.updateUser(req.user.id, {
+        profilePicture: null
+      });
+      
+      if (!updatedUser) {
+        return res.status(500).json({ message: "Failed to update profile" });
+      }
+      
+      res.json({ message: "Profile picture deleted successfully" });
     } catch (error) {
       console.error("Error deleting profile picture:", error);
+      res.status(500).json({ message: "An error occurred while deleting profile picture" });
     }
-    
-    // Update the user to remove the profile picture reference
-    await storage.updateUser(req.user.id, {
-      profilePicture: null
-    });
-    
-    res.json({ message: "Profile picture deleted successfully" });
   });
 
   // ===== Media Routes =====
