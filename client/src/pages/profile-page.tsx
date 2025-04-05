@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { Loader2, User as UserIcon, Key, Image as ImageIcon } from "lucide-react";
+import { Loader2, User as UserIcon } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/use-auth";
 import { updateUserSchema, type UpdateUser } from "@shared/schema";
@@ -191,14 +191,10 @@ export default function ProfilePage() {
             </div>
             
             <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
-              <TabsList className="grid grid-cols-2 w-full sm:w-auto">
+              <TabsList className="grid grid-cols-1 w-full sm:w-auto">
                 <TabsTrigger value="general">
                   <UserIcon className="h-4 w-4 mr-2" />
                   <span className="hidden sm:inline">General</span>
-                </TabsTrigger>
-                <TabsTrigger value="avatar">
-                  <ImageIcon className="h-4 w-4 mr-2" />
-                  <span className="hidden sm:inline">Avatar</span>
                 </TabsTrigger>
               </TabsList>
               
@@ -309,159 +305,6 @@ export default function ProfilePage() {
                           {new Date(user.createdAt).toLocaleDateString()}
                         </span>
                       </div>
-                    </div>
-                  </CardContent>
-                </Card>
-              </TabsContent>
-              
-              {/* Avatar Tab */}
-              <TabsContent value="avatar" className="space-y-6">
-                <Card>
-                  <CardHeader>
-                    <CardTitle>Profile Picture</CardTitle>
-                    <CardDescription>
-                      Upload or change your profile picture
-                    </CardDescription>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="flex flex-col items-center justify-center space-y-4">
-                      <div className="relative">
-                        <div className="w-32 h-32 rounded-full overflow-hidden bg-muted flex items-center justify-center">
-                          {user.profilePicture ? (
-                            <img src={user.profilePicture} alt="Profile" className="w-full h-full object-cover" />
-                          ) : (
-                            <UserIcon className="h-16 w-16 text-muted-foreground" />
-                          )}
-                        </div>
-                      </div>
-                      
-                      <form 
-                        encType="multipart/form-data" 
-                        onSubmit={async (e) => {
-                          e.preventDefault();
-                          const formData = new FormData(e.currentTarget);
-                          
-                          // Check if a file was selected
-                          const file = formData.get('profilePicture') as File;
-                          if (!file || file.size === 0) {
-                            toast({
-                              title: "No file selected",
-                              description: "Please select an image to upload",
-                              variant: "destructive"
-                            });
-                            return;
-                          }
-                          
-                          // Check file size (max 2MB)
-                          if (file.size > 2 * 1024 * 1024) {
-                            toast({
-                              title: "File too large",
-                              description: "Maximum file size is 2MB",
-                              variant: "destructive"
-                            });
-                            return;
-                          }
-                          
-                          // Show upload in progress
-                          toast({
-                            title: "Uploading...",
-                            description: "Your profile picture is being uploaded"
-                          });
-                          
-                          try {
-                            // Send the file to the server
-                            const res = await fetch('/api/users/profile-picture', {
-                              method: 'POST',
-                              body: formData,
-                              credentials: 'include'
-                            });
-                            
-                            if (!res.ok) {
-                              const errorData = await res.json().catch(() => ({}));
-                              throw new Error(errorData.message || 'Failed to upload profile picture');
-                            }
-                            
-                            await res.json();
-                            
-                            toast({
-                              title: "Profile picture updated",
-                              description: "Your profile picture has been updated successfully"
-                            });
-                            
-                            // Refresh user data
-                            queryClient.invalidateQueries({ queryKey: ['/api/user'] });
-                          } catch (error: any) {
-                            toast({
-                              title: "Upload failed",
-                              description: error.message || "An error occurred during upload",
-                              variant: "destructive"
-                            });
-                          }
-                        }}
-                        className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto"
-                      >
-                        <input 
-                          type="file" 
-                          name="profilePicture" 
-                          id="profilePicture" 
-                          accept="image/jpeg,image/png,image/gif"
-                          className="hidden"
-                          onChange={(e) => {
-                            const file = e.target.files?.[0];
-                            if (file) {
-                              // Auto submit when file is selected
-                              e.target.form?.dispatchEvent(new Event('submit', { cancelable: true, bubbles: true }));
-                            }
-                          }}
-                        />
-                        <Button 
-                          type="button" 
-                          variant="outline"
-                          onClick={() => document.getElementById('profilePicture')?.click()}
-                        >
-                          Upload New
-                        </Button>
-                        
-                        {user.profilePicture && (
-                          <Button 
-                            type="button" 
-                            variant="outline" 
-                            className="text-destructive hover:text-destructive"
-                            onClick={async () => {
-                              try {
-                                // Show deleting in progress
-                                toast({
-                                  title: "Removing...",
-                                  description: "Your profile picture is being removed"
-                                });
-                                
-                                // Call API to remove profile picture
-                                await apiRequest("DELETE", "/api/users/profile-picture");
-                                
-                                toast({
-                                  title: "Profile picture removed",
-                                  description: "Your profile picture has been removed"
-                                });
-                                
-                                // Refresh user data
-                                queryClient.invalidateQueries({ queryKey: ['/api/user'] });
-                              } catch (error: any) {
-                                toast({
-                                  title: "Remove failed",
-                                  description: error.message || "An error occurred during removal",
-                                  variant: "destructive"
-                                });
-                              }
-                            }}
-                          >
-                            Remove
-                          </Button>
-                        )}
-                      </form>
-                      
-                      <p className="text-sm text-muted-foreground">
-                        Allowed formats: JPG, PNG, GIF. Max size: 2MB
-                      </p>
                     </div>
                   </CardContent>
                 </Card>
