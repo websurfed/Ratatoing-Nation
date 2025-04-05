@@ -120,6 +120,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
       return res.status(400).json({ message: "No file uploaded" });
     }
     
+    // Get the user to check if they already have a profile picture
+    const user = await storage.getUser(req.user.id);
+    if (user && user.profilePicture) {
+      // Delete the old profile picture
+      try {
+        const oldFilePath = path.join(process.cwd(), user.profilePicture);
+        if (fs.existsSync(oldFilePath)) {
+          fs.unlinkSync(oldFilePath);
+        }
+      } catch (error) {
+        console.error("Error deleting old profile picture:", error);
+      }
+    }
+    
     const filePath = getFilePath('profile', req.file.filename);
     
     await storage.updateUser(req.user.id, {
@@ -127,6 +141,33 @@ export async function registerRoutes(app: Express): Promise<Server> {
     });
     
     res.json({ path: filePath });
+  });
+  
+  // Delete profile picture
+  app.delete("/api/users/profile-picture", isAuthenticated, async (req, res) => {
+    // Get the user to check if they have a profile picture
+    const user = await storage.getUser(req.user.id);
+    
+    if (!user || !user.profilePicture) {
+      return res.status(404).json({ message: "No profile picture found" });
+    }
+    
+    // Delete the profile picture file
+    try {
+      const filePath = path.join(process.cwd(), user.profilePicture);
+      if (fs.existsSync(filePath)) {
+        fs.unlinkSync(filePath);
+      }
+    } catch (error) {
+      console.error("Error deleting profile picture:", error);
+    }
+    
+    // Update the user to remove the profile picture reference
+    await storage.updateUser(req.user.id, {
+      profilePicture: null
+    });
+    
+    res.json({ message: "Profile picture deleted successfully" });
   });
 
   // ===== Media Routes =====
@@ -395,6 +436,131 @@ export async function registerRoutes(app: Express): Promise<Server> {
     
     await storage.deleteEmail(emailId);
     res.json({ message: "Email deleted successfully" });
+  });
+
+  // ===== Profile Routes =====
+  // Update profile
+  app.patch("/api/profile", isAuthenticated, async (req, res) => {
+    try {
+      const { currentPassword, ...updateData } = req.body;
+      
+      if (!currentPassword) {
+        return res.status(400).json({ message: "Current password is required" });
+      }
+      
+      // Verify current password
+      const user = await storage.getUser(req.user.id);
+      if (!user) {
+        return res.status(404).json({ message: "User not found" });
+      }
+      
+      const { comparePasswords } = require('./auth');
+      const isPasswordValid = await comparePasswords(currentPassword, user.password);
+      
+      if (!isPasswordValid) {
+        return res.status(401).json({ message: "Current password is incorrect" });
+      }
+      
+      // Update user profile
+      const updatedUser = await storage.updateUser(req.user.id, updateData);
+      
+      if (!updatedUser) {
+        return res.status(404).json({ message: "Failed to update profile" });
+      }
+      
+      const { password: _, ...userWithoutPassword } = updatedUser;
+      res.json(userWithoutPassword);
+    } catch (error) {
+      if (error instanceof ZodError) {
+        const validationError = fromZodError(error);
+        return res.status(400).json({ message: validationError.message });
+      }
+      throw error;
+    }
+  });
+  
+  // Change password
+  app.post("/api/change-password", isAuthenticated, async (req, res) => {
+    try {
+      const { currentPassword, newPassword } = req.body;
+      
+      if (!currentPassword || !newPassword) {
+        return res.status(400).json({ message: "Current password and new password are required" });
+      }
+      
+      // Verify current password
+      const user = await storage.getUser(req.user.id);
+      if (!user) {
+        return res.status(404).json({ message: "User not found" });
+      }
+      
+      const { comparePasswords, hashPassword } = require('./auth');
+      const isPasswordValid = await comparePasswords(currentPassword, user.password);
+      
+      if (!isPasswordValid) {
+        return res.status(401).json({ message: "Current password is incorrect" });
+      }
+      
+      // Hash and update new password
+      const hashedPassword = await hashPassword(newPassword);
+      const updatedUser = await storage.updateUser(req.user.id, { password: hashedPassword });
+      
+      if (!updatedUser) {
+        return res.status(404).json({ message: "Failed to update password" });
+      }
+      
+      res.json({ message: "Password changed successfully" });
+    } catch (error) {
+      if (error instanceof ZodError) {
+        const validationError = fromZodError(error);
+        return res.status(400).json({ message: validationError.message });
+      }
+      throw error;
+    }
+  });
+  
+  // Change PIN
+  app.post("/api/change-pin", isAuthenticated, async (req, res) => {
+    try {
+      const { currentPassword, newPin } = req.body;
+      
+      if (!currentPassword || !newPin) {
+        return res.status(400).json({ message: "Current password and new PIN are required" });
+      }
+      
+      // Validate PIN format
+      if (!/^\d{4}$/.test(newPin)) {
+        return res.status(400).json({ message: "PIN must be exactly 4 digits" });
+      }
+      
+      // Verify current password
+      const user = await storage.getUser(req.user.id);
+      if (!user) {
+        return res.status(404).json({ message: "User not found" });
+      }
+      
+      const { comparePasswords } = require('./auth');
+      const isPasswordValid = await comparePasswords(currentPassword, user.password);
+      
+      if (!isPasswordValid) {
+        return res.status(401).json({ message: "Current password is incorrect" });
+      }
+      
+      // Update PIN
+      const updatedUser = await storage.updateUser(req.user.id, { pin: newPin });
+      
+      if (!updatedUser) {
+        return res.status(404).json({ message: "Failed to update PIN" });
+      }
+      
+      res.json({ message: "PIN changed successfully" });
+    } catch (error) {
+      if (error instanceof ZodError) {
+        const validationError = fromZodError(error);
+        return res.status(400).json({ message: validationError.message });
+      }
+      throw error;
+    }
   });
 
   // ===== Bank Routes =====
