@@ -171,7 +171,7 @@ export default function AuthPage() {
           </div>
           <h2 className="mt-6 text-center text-3xl font-bold">Welcome to Ratatoing Nation</h2>
           <p className="mt-2 text-center text-sm text-muted-foreground">
-            The place for all Banson lovers
+            The official nation of Ratatoing.
           </p>
         </div>
 
