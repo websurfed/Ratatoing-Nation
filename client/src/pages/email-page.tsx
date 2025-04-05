@@ -345,8 +345,8 @@ export default function EmailPage() {
                             </div>
                             <div className="text-sm text-muted-foreground">
                               {activeFolder === 'sent' 
-                                ? `${selectedEmail.recipientUsername}@ratatoing`
-                                : `${selectedEmail.senderUsername}@ratatoing`
+                                ? `${selectedEmail.recipientUsername || 'unknown'}@ratatoing`
+                                : `${selectedEmail.senderUsername || 'unknown'}@ratatoing`
                               }
                             </div>
                           </div>
@@ -435,8 +435,8 @@ export default function EmailPage() {
                                       </div>
                                       <p className="text-sm text-muted-foreground">
                                         {activeFolder === 'sent' 
-                                          ? `${email.recipientUsername}@ratatoing`
-                                          : `${email.senderUsername}@ratatoing`
+                                          ? `${email.recipientUsername || 'unknown'}@ratatoing`
+                                          : `${email.senderUsername || 'unknown'}@ratatoing`
                                         }
                                       </p>
                                     </div>

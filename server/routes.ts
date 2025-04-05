@@ -439,6 +439,24 @@ export async function registerRoutes(app: Express): Promise<Server> {
     await storage.deleteEmail(emailId);
     res.json({ message: "Email deleted successfully" });
   });
+  
+  // Mark email as read
+  app.patch("/api/emails/:id/read", isAuthenticated, async (req, res) => {
+    const emailId = parseInt(req.params.id);
+    const email = await storage.getEmailById(emailId);
+    
+    if (!email) {
+      return res.status(404).json({ message: "Email not found" });
+    }
+    
+    // Only the recipient can mark an email as read
+    if (email.recipientId !== req.user.id) {
+      return res.status(403).json({ message: "Not authorized" });
+    }
+    
+    const updatedEmail = await storage.markEmailAsRead(emailId);
+    res.json(updatedEmail);
+  });
 
   // ===== Profile Routes =====
   // Update profile
