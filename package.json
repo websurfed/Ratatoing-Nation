@@ -8,6 +8,8 @@
     "build": "vite build && esbuild server/index.ts --platform=node --packages=external --bundle --format=esm --outdir=dist",
     "start": "NODE_ENV=production node dist/index.js",
     "check": "tsc",
+    "migrate": "ts-node scripts/runMigration.ts",
+    "migrate:job-system": "npm run migrate"
     "db:push": "drizzle-kit push"
   },
   "dependencies": {

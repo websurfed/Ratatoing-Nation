@@ -14,8 +14,13 @@ import {
   LogOut,
   Pizza,
   User,
-  Package
+  Package,
+  BriefcaseBusiness,
+  Newspaper,
+  Joystick,
+  Album
 } from "lucide-react";
+import { BiSolidCheese } from "react-icons/bi";
 import { Separator } from "@/components/ui/separator";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -78,7 +83,7 @@ export function Sidebar({ open, setOpen }: SidebarProps) {
         <div className="flex items-center justify-between p-4 border-b">
           <div className="flex items-center">
             <div className="w-10 h-10 rounded-full bg-primary flex items-center justify-center">
-              <Pizza className="text-white" />
+              <BiSolidCheese size={24} className="text-[#4b3d0b]" />
             </div>
             <h1 className="ml-3 font-bold text-xl">Ratatoing</h1>
           </div>
@@ -156,6 +161,19 @@ export function Sidebar({ open, setOpen }: SidebarProps) {
                 </a>
               </Link>
             </li>
+
+            <li>
+              <Link href="/arcade">
+                <a className={`flex items-center px-4 py-2 rounded-lg transition-colors cursor-pointer ${
+                  location === "/arcade" 
+                    ? "bg-primary text-primary-foreground" 
+                    : "hover:bg-accent hover:text-accent-foreground"
+                }`}>
+                  <Joystick className="w-5 h-5" />
+                  <span className="ml-3">Arcade</span>
+                </a>
+              </Link>
+            </li>
             
             <li>
               <Link href="/gallery">
@@ -210,6 +228,19 @@ export function Sidebar({ open, setOpen }: SidebarProps) {
             </li>
 
             <li>
+              <Link href="/job">
+                <a className={`flex items-center px-4 py-2 rounded-lg transition-colors cursor-pointer ${
+                  location === "/job" 
+                    ? "bg-primary text-primary-foreground" 
+                    : "hover:bg-accent hover:text-accent-foreground"
+                }`}>
+                  <BriefcaseBusiness className="w-5 h-5" />
+                  <span className="ml-3">My Job</span>
+                </a>
+              </Link>
+            </li>
+
+            <li>
               <Link href="/profile">
                 <a className={`flex items-center px-4 py-2 rounded-lg transition-colors cursor-pointer ${
                   location === "/profile" 
@@ -217,7 +248,33 @@ export function Sidebar({ open, setOpen }: SidebarProps) {
                     : "hover:bg-accent hover:text-accent-foreground"
                 }`}>
                   <User className="w-5 h-5" />
-                  <span className="ml-3">My Profile</span>
+                  <span className="ml-3">Profile</span>
+                </a>
+              </Link>
+            </li>
+
+            <li>
+              <Link href="/news">
+                <a className={`flex items-center px-4 py-2 rounded-lg transition-colors cursor-pointer ${
+                  location === "/news" 
+                    ? "bg-primary text-primary-foreground" 
+                    : "hover:bg-accent hover:text-accent-foreground"
+                }`}>
+                  <Newspaper className="w-5 h-5" />
+                  <span className="ml-3">News</span>
+                </a>
+              </Link>
+            </li>
+
+            <li>
+              <Link href="/history">
+                <a className={`flex items-center px-4 py-2 rounded-lg transition-colors cursor-pointer ${
+                  location === "/history" 
+                    ? "bg-primary text-primary-foreground" 
+                    : "hover:bg-accent hover:text-accent-foreground"
+                }`}>
+                  <Album className="w-5 h-5" />
+                  <span className="ml-3">History</span>
                 </a>
               </Link>
             </li>

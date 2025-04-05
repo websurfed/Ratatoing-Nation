@@ -10,6 +10,11 @@ export type UserRank = typeof USER_RANKS[number];
 export const USER_STATUS = ['pending', 'active', 'banned'] as const;
 export type UserStatus = typeof USER_STATUS[number];
 
+export const USER_JOBS = [
+  'ArcadeManager',
+] as const;
+export type UserJob = typeof USER_JOBS[number] | null;
+
 // Users table
 export const users = pgTable("users", {
   id: serial("id").primaryKey(),
@@ -22,6 +27,7 @@ export const users = pgTable("users", {
   description: text("description"),
   rank: text("rank").$type<UserRank>().notNull().default('Nibbler'),
   status: text("status").$type<UserStatus>().notNull().default('pending'),
+  job: text("job").$type<UserJob>(),
   pocketSniffles: integer("pocket_sniffles").notNull().default(0),
   approvedBy: integer("approved_by").references((): any => users.id),
   createdAt: timestamp("created_at").notNull().defaultNow(),
@@ -90,7 +96,9 @@ export const loginUserSchema = z.object({
   password: z.string().min(6),
 });
 
-export const updateUserSchema = createInsertSchema(users).partial().omit({
+export const updateUserSchema = createInsertSchema(users, {
+    job: z.enum([...USER_JOBS]).nullable().optional()
+  }).partial().omit({
   id: true,
   createdAt: true,
   email: true,
@@ -126,9 +134,31 @@ export const insertEmailSchema = createInsertSchema(emails)
     body: z.string().min(1, "Message is required").max(1500, "Message cannot exceed 1500 characters")
   });
 
+
 export const insertTransactionSchema = createInsertSchema(transactions).omit({
   id: true,
   createdAt: true
+});
+
+// Job applications table
+export const jobApplications = pgTable("job_applications", {
+  id: serial("id").primaryKey(),
+  userId: integer("user_id").notNull().references(() => users.id),
+  job: text("job").$type<UserJob>().notNull(),
+  description: text("description").notNull(),
+  status: text("status").$type<"pending" | "approved" | "rejected">().notNull().default("pending"),
+  reviewedBy: integer("reviewed_by").references(() => users.id),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+// Schema validation
+export const insertJobApplicationSchema = createInsertSchema(jobApplications).omit({
+  id: true,
+  status: true,
+  reviewedBy: true,
+  createdAt: true,
+  updatedAt: true
 });
 
 // Types
@@ -136,6 +166,9 @@ export type User = typeof users.$inferSelect;
 export type InsertUser = z.infer<typeof insertUserSchema>;
 export type LoginUser = z.infer<typeof loginUserSchema>;
 export type UpdateUser = z.infer<typeof updateUserSchema>;
+
+export type JobApplication = typeof jobApplications.$inferSelect;
+export type InsertJobApplication = z.infer<typeof insertJobApplicationSchema>;
 
 export type Media = typeof media.$inferSelect;
 export type InsertMedia = z.infer<typeof insertMediaSchema>;

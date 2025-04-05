@@ -1,10 +1,11 @@
 import { 
-  users, User, InsertUser, UserRank, UpdateUser,
+  users, User, InsertUser, UserRank, UpdateUser, UserJob,
   media, Media, InsertMedia,
   shopItems, ShopItem, InsertShopItem,
   emails, Email, InsertEmail,
   transactions, Transaction, InsertTransaction,
-  USER_RANKS
+  jobApplications, JobApplication, InsertJobApplication,
+  USER_RANKS, USER_JOBS
 } from "@shared/schema";
 import session from "express-session";
 import connectPg from "connect-pg-simple";
@@ -235,6 +236,139 @@ export class DatabaseStorage implements IStorage {
       console.error("Error deleting user:", error);
       return false;
     }
+  }
+
+  // Job application operations
+  async createJobApplication(application: InsertJobApplication): Promise<JobApplication> {
+    const [created] = await db
+      .insert(jobApplications)
+      .values(application)
+      .returning();
+    return created;
+  }
+
+  async getJobApplication(id: number): Promise<JobApplication | undefined> {
+    const [app] = await db
+      .select()
+      .from(jobApplications)
+      .where(eq(jobApplications.id, id));
+    return app;
+  }
+
+  async getUserApplications(userId: number): Promise<JobApplication[]> {
+    return await db
+      .select()
+      .from(jobApplications)
+      .where(eq(jobApplications.userId, userId))
+      .orderBy(desc(jobApplications.createdAt));
+  }
+
+  async getPendingApplications(): Promise<JobApplication[]> {
+    return await db
+      .select()
+      .from(jobApplications)
+      .where(eq(jobApplications.status, 'pending'))
+      .orderBy(desc(jobApplications.createdAt));
+  }
+
+  async approveJobApplication(appId: number, adminId: number): Promise<JobApplication | undefined> {
+    return await db.transaction(async (tx) => {
+      // Get the application
+      const [app] = await tx
+        .select()
+        .from(jobApplications)
+        .where(eq(jobApplications.id, appId));
+
+      if (!app || app.status !== 'pending') return undefined;
+
+      // Update user's job
+      await tx
+        .update(users)
+        .set({ job: app.job })
+        .where(eq(users.id, app.userId));
+
+      // Update application status
+      const [updated] = await tx
+        .update(jobApplications)
+        .set({ 
+          status: 'approved',
+          reviewedBy: adminId,
+          updatedAt: new Date()
+        })
+        .where(eq(jobApplications.id, appId))
+        .returning();
+
+      return updated;
+    });
+  }
+
+  async rejectJobApplication(appId: number, adminId: number): Promise<JobApplication | undefined> {
+    const [updated] = await db
+      .update(jobApplications)
+      .set({ 
+        status: 'rejected',
+        reviewedBy: adminId,
+        updatedAt: new Date()
+      })
+      .where(eq(jobApplications.id, appId))
+      .returning();
+    return updated;
+  }
+
+  // ==============================================
+  // NEW JOB-RELATED OPERATIONS (ADD HERE)
+  // ==============================================
+  async getUserJob(userId: number): Promise<UserJob | undefined> {
+    const [user] = await db
+      .select({ job: users.job })
+      .from(users)
+      .where(eq(users.id, userId));
+    return user?.job;
+  }
+
+  async setUserJob(userId: number, job: UserJob): Promise<User | undefined> {
+    const [updatedUser] = await db
+      .update(users)
+      .set({ job })
+      .where(eq(users.id, userId))
+      .returning();
+    return updatedUser;
+  }
+
+  async getUsersWithJob(job: Exclude<UserJob, null>): Promise<User[]> {
+    return await db
+      .select()
+      .from(users)
+      .where(eq(users.job, job));
+  }
+
+  async getUnemployedUsers(): Promise<User[]> {
+    return await db
+      .select()
+      .from(users)
+      .where(sql`${users.job} IS NULL`);
+  }
+
+  async promoteToJob(userId: number, job: Exclude<UserJob, null>): Promise<User | undefined> {
+    const user = await this.getUser(userId);
+    if (!user) return undefined;
+    return this.setUserJob(userId, job);
+  }
+
+  async demoteToUnemployed(userId: number): Promise<User | undefined> {
+    const user = await this.getUser(userId);
+    if (!user) return undefined;
+    return this.setUserJob(userId, null);
+  }
+
+  async hasJob(userId: number, job: Exclude<UserJob, null>): Promise<boolean> {
+    const userJob = await this.getUserJob(userId);
+    return userJob === job;
+  }
+
+  async isEmployed(userId: number): Promise<boolean> {
+    const userJob = await this.getUserJob(userId);
+    return userJob !== null;
   }
 
   // Media operations

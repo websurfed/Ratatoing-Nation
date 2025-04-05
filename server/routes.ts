@@ -865,11 +865,83 @@ export async function registerRoutes(app: Express): Promise<Server> {
     res.json({ message: "Pocket Sniffles added successfully" });
   });
 
+  // ===== Job Routes =====
+  // Apply for a job
+  app.post("/api/jobs/apply", isAuthenticated, async (req, res) => {
+    try {
+      const { job, description } = req.body;
+
+      // Check if user already has a job
+      const user = await storage.getUser(req.user.id);
+      if (user?.job) {
+        return res.status(400).json({ message: "You already have a job" });
+      }
+
+      const application = await storage.createJobApplication({
+        userId: req.user.id,
+        job,
+        description
+      });
+
+      res.status(201).json(application);
+    } catch (error) {
+      if (error instanceof ZodError) {
+        const validationError = fromZodError(error);
+        return res.status(400).json({ message: validationError.message });
+      }
+      res.status(500).json({ message: "Failed to submit application" });
+    }
+  });
+
+  // Get user's job applications
+  app.get("/api/jobs/my-applications", isAuthenticated, async (req, res) => {
+    const applications = await storage.getUserApplications(req.user.id);
+    res.json(applications);
+  });
+
+  // Get current job status
+  app.get("/api/jobs/status", isAuthenticated, async (req, res) => {
+    const user = await storage.getUser(req.user.id);
+    res.json({ 
+      job: user?.job || null,
+      isEmployed: user?.job !== null
+    });
+  });
+
+  // Admin: Get pending applications
+  app.get("/api/jobs/pending", isAdmin, async (req, res) => {
+    const applications = await storage.getPendingApplications();
+    res.json(applications);
+  });
+
+  // Admin: Approve application
+  app.post("/api/jobs/:id/approve", isAdmin, async (req, res) => {
+    const appId = parseInt(req.params.id);
+    const application = await storage.approveJobApplication(appId, req.user.id);
+
+    if (!application) {
+      return res.status(404).json({ message: "Application not found or already processed" });
+    }
+
+    res.json(application);
+  });
+
+  // Admin: Reject application
+  app.post("/api/jobs/:id/reject", isAdmin, async (req, res) => {
+    const appId = parseInt(req.params.id);
+    const application = await storage.rejectJobApplication(appId, req.user.id);
+
+    if (!application) {
+      return res.status(404).json({ message: "Application not found" });
+    }
+
+    res.json(application);
+  });
+
   // Create HTTP server
   const httpServer = createServer(app);
 
   return httpServer;
 }
 
-// Add this import to the top of the file
 import express from "express";

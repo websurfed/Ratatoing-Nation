@@ -10,12 +10,14 @@ import { ProtectedRoute } from "@/lib/protected-route";
 import DashboardPage from "@/pages/dashboard-page";
 import ApprovalsPage from "@/pages/approvals-page";
 import EmailPage from "@/pages/email-page";
+import HistoryPage from "@/pages/history-page";
 import GalleryPage from "@/pages/gallery-page";
 import ShopPage from "@/pages/shop-page";
 import BankPage from "@/pages/bank-page";
 import AdminPage from "@/pages/admin-page";
 import ProfilePage from "@/pages/profile-page";
 import InventoryPage from "@/pages/inventory-page";
+import BackgroundMusic from "@/components/ui/background-music";
 
 function Router() {
   return (
@@ -30,6 +32,7 @@ function Router() {
       <ProtectedRoute path="/bank" component={BankPage} />
       <ProtectedRoute path="/admin" component={AdminPage} />
       <ProtectedRoute path="/profile" component={ProfilePage} />
+      <ProtectedRoute path="/history" component={HistoryPage} />
       <Route component={NotFound} />
     </Switch>
   );
@@ -38,6 +41,7 @@ function Router() {
 function App() {
   return (
     <QueryClientProvider client={queryClient}>
+      <BackgroundMusic volume={15} />
       <ThemeProvider>
         <AuthProvider>
           <Router />
