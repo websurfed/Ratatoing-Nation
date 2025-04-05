@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { Loader2, User as UserIcon } from "lucide-react";
+import { Loader2, User as UserIcon, Lock as LockIcon, Key as KeyIcon } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/use-auth";
 import { Sidebar } from "@/components/layout/sidebar";
@@ -188,10 +188,14 @@ export default function ProfilePage() {
             </div>
             
             <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
-              <TabsList className="grid grid-cols-1 w-full sm:w-auto">
+              <TabsList className="grid grid-cols-2 w-full sm:w-auto">
                 <TabsTrigger value="general">
                   <UserIcon className="h-4 w-4 mr-2" />
                   <span className="hidden sm:inline">General</span>
+                </TabsTrigger>
+                <TabsTrigger value="security">
+                  <LockIcon className="h-4 w-4 mr-2" />
+                  <span className="hidden sm:inline">Security</span>
                 </TabsTrigger>
               </TabsList>
               
@@ -287,6 +291,179 @@ export default function ProfilePage() {
                         </span>
                       </div>
                     </div>
+                  </CardContent>
+                </Card>
+              </TabsContent>
+              
+              {/* Security Tab */}
+              <TabsContent value="security" className="space-y-6">
+                <Card>
+                  <CardHeader>
+                    <CardTitle>Password Change</CardTitle>
+                    <CardDescription>
+                      Change your account password
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <Form {...passwordForm}>
+                      <form onSubmit={passwordForm.handleSubmit(onPasswordSubmit)} className="space-y-4">
+                        <FormField
+                          control={passwordForm.control}
+                          name="currentPassword"
+                          render={({ field }) => (
+                            <FormItem>
+                              <FormLabel>Current Password</FormLabel>
+                              <FormControl>
+                                <Input 
+                                  type="password" 
+                                  placeholder="Enter your current password" 
+                                  {...field} 
+                                />
+                              </FormControl>
+                              <FormMessage />
+                            </FormItem>
+                          )}
+                        />
+                        
+                        <FormField
+                          control={passwordForm.control}
+                          name="newPassword"
+                          render={({ field }) => (
+                            <FormItem>
+                              <FormLabel>New Password</FormLabel>
+                              <FormControl>
+                                <Input 
+                                  type="password" 
+                                  placeholder="Enter your new password" 
+                                  {...field} 
+                                />
+                              </FormControl>
+                              <FormDescription>
+                                Must be at least 8 characters with uppercase, lowercase, number and special character
+                              </FormDescription>
+                              <FormMessage />
+                            </FormItem>
+                          )}
+                        />
+                        
+                        <FormField
+                          control={passwordForm.control}
+                          name="confirmPassword"
+                          render={({ field }) => (
+                            <FormItem>
+                              <FormLabel>Confirm New Password</FormLabel>
+                              <FormControl>
+                                <Input 
+                                  type="password" 
+                                  placeholder="Confirm your new password" 
+                                  {...field} 
+                                />
+                              </FormControl>
+                              <FormMessage />
+                            </FormItem>
+                          )}
+                        />
+                        
+                        <Button 
+                          type="submit" 
+                          className="w-full sm:w-auto"
+                          disabled={changePasswordMutation.isPending}
+                        >
+                          {changePasswordMutation.isPending ? (
+                            <>
+                              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                              Updating Password...
+                            </>
+                          ) : (
+                            "Change Password"
+                          )}
+                        </Button>
+                      </form>
+                    </Form>
+                  </CardContent>
+                </Card>
+                
+                <Card>
+                  <CardHeader>
+                    <CardTitle>Banking PIN Change</CardTitle>
+                    <CardDescription>
+                      Change your banking PIN for transactions
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <form onSubmit={(e) => {
+                      e.preventDefault();
+                      const formData = new FormData(e.currentTarget);
+                      const currentPassword = formData.get("pinCurrentPassword") as string;
+                      const newPin = formData.get("newPin") as string;
+                      
+                      if (!currentPassword || !newPin) {
+                        toast({
+                          title: "Missing information",
+                          description: "Please fill in all fields",
+                          variant: "destructive"
+                        });
+                        return;
+                      }
+                      
+                      if (!/^\d{4}$/.test(newPin)) {
+                        toast({
+                          title: "Invalid PIN format",
+                          description: "PIN must be exactly 4 digits",
+                          variant: "destructive"
+                        });
+                        return;
+                      }
+                      
+                      onPinSubmit({ currentPassword, newPin });
+                    }} className="space-y-4">
+                      <div className="space-y-2">
+                        <label htmlFor="pinCurrentPassword" className="text-sm font-medium">
+                          Current Password
+                        </label>
+                        <Input 
+                          id="pinCurrentPassword"
+                          name="pinCurrentPassword"
+                          type="password" 
+                          placeholder="Enter your current password" 
+                        />
+                        <p className="text-sm text-muted-foreground">
+                          Required to verify your identity
+                        </p>
+                      </div>
+                      
+                      <div className="space-y-2">
+                        <label htmlFor="newPin" className="text-sm font-medium">
+                          New 4-Digit PIN
+                        </label>
+                        <Input 
+                          id="newPin"
+                          name="newPin"
+                          type="password" 
+                          placeholder="Enter a 4-digit PIN" 
+                          maxLength={4}
+                          pattern="[0-9]{4}"
+                        />
+                        <p className="text-sm text-muted-foreground">
+                          Must be exactly 4 digits
+                        </p>
+                      </div>
+                      
+                      <Button 
+                        type="submit" 
+                        className="w-full sm:w-auto"
+                        disabled={changePinMutation.isPending}
+                      >
+                        {changePinMutation.isPending ? (
+                          <>
+                            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                            Updating PIN...
+                          </>
+                        ) : (
+                          "Change PIN"
+                        )}
+                      </Button>
+                    </form>
                   </CardContent>
                 </Card>
               </TabsContent>
