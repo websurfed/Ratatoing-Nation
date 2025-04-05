@@ -10,7 +10,8 @@ import {
   PiggyBank, 
   Shield, 
   LogOut,
-  Pizza
+  Pizza,
+  User
 } from "lucide-react";
 import { Separator } from "@/components/ui/separator";
 import { Button } from "@/components/ui/button";
@@ -163,6 +164,19 @@ export function Sidebar({ open, setOpen }: SidebarProps) {
                 }`}>
                   <PiggyBank className="w-5 h-5" />
                   <span className="ml-3">Bank</span>
+                </a>
+              </Link>
+            </li>
+
+            <li>
+              <Link href="/profile">
+                <a className={`flex items-center px-4 py-2 rounded-lg transition-colors cursor-pointer ${
+                  location === "/profile" 
+                    ? "bg-primary text-primary-foreground" 
+                    : "hover:bg-accent hover:text-accent-foreground"
+                }`}>
+                  <User className="w-5 h-5" />
+                  <span className="ml-3">My Profile</span>
                 </a>
               </Link>
             </li>

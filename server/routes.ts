@@ -1,6 +1,6 @@
 import type { Express, Request, Response } from "express";
 import { createServer, type Server } from "http";
-import { setupAuth } from "./auth";
+import { setupAuth, comparePasswords, hashPassword } from "./auth";
 import { storage } from "./storage";
 import { upload, getFilePath } from "./multer";
 import path from "path";
@@ -8,8 +8,10 @@ import fs from "fs";
 import { 
   insertMediaSchema, 
   insertShopItemSchema, 
-  insertEmailSchema 
+  insertEmailSchema,
+  transactions
 } from "@shared/schema";
+import { db } from "./db";
 import { ZodError } from "zod";
 import { fromZodError } from "zod-validation-error";
 
@@ -454,7 +456,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ message: "User not found" });
       }
       
-      const { comparePasswords } = require('./auth');
+      // comparePasswords is already imported at the top of the file
       const isPasswordValid = await comparePasswords(currentPassword, user.password);
       
       if (!isPasswordValid) {
@@ -494,7 +496,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ message: "User not found" });
       }
       
-      const { comparePasswords, hashPassword } = require('./auth');
+      // comparePasswords and hashPassword are already imported at the top of the file
       const isPasswordValid = await comparePasswords(currentPassword, user.password);
       
       if (!isPasswordValid) {
@@ -539,7 +541,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ message: "User not found" });
       }
       
-      const { comparePasswords } = require('./auth');
+      // comparePasswords is already imported at the top of the file
       const isPasswordValid = await comparePasswords(currentPassword, user.password);
       
       if (!isPasswordValid) {
@@ -564,10 +566,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // ===== Bank Routes =====
-  // Get user's transactions
+  // Get all transactions (admin only) or user's transactions (regular users)
   app.get("/api/transactions", isAuthenticated, async (req, res) => {
-    const transactions = await storage.getUserTransactions(req.user.id);
-    res.json(transactions);
+    if (req.user.rank === 'Banson') {
+      // For admin users, fetch all transactions
+      const allTransactions = await db.select().from(transactions).orderBy(transactions.createdAt, 'desc').limit(20);
+      return res.json(allTransactions);
+    } else {
+      // For regular users, only fetch their own transactions
+      const userTransactions = await storage.getUserTransactions(req.user.id);
+      res.json(userTransactions);
+    }
   });
 
   // Transfer pocketSniffles

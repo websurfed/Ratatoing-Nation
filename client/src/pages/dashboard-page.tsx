@@ -20,7 +20,8 @@ import {
   Pizza, 
   UserPlus, 
   ShoppingCart, 
-  AlertCircle 
+  AlertCircle, 
+  Wallet 
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -43,42 +44,107 @@ export default function DashboardPage() {
     enabled: user?.rank === 'Banson',
   });
   
-  // Get recent activities
-  const { data: recentActivities = [] } = useQuery({
-    queryKey: ['/api/activities'],
+  // Get recent gallery uploads
+  const { data: recentGallery = [] } = useQuery({
+    queryKey: ['/api/gallery'],
     queryFn: async () => {
-      try {
-        // This is a mock endpoint, in real implementation we would fetch from backend
-        // For now, return some sample activities
-        return [
-          {
-            id: 1,
-            type: 'user_join',
-            user: { name: 'New user', username: 'newuser' },
-            createdAt: new Date(Date.now() - 3 * 60 * 1000).toISOString(),
-            message: 'requested to join Ratatoing Nation'
-          },
-          {
-            id: 2,
-            type: 'shop_purchase',
-            user: { name: 'CheeseCollector', username: 'cheesecollector' },
-            item: 'Special Cheddar Stick',
-            createdAt: new Date(Date.now() - 15 * 60 * 1000).toISOString(),
-            message: 'purchased Special Cheddar Stick'
-          },
-          {
-            id: 3,
-            type: 'gallery_upload',
-            user: { name: 'WhiskerJones', username: 'whiskerjones' },
-            createdAt: new Date(Date.now() - 42 * 60 * 1000).toISOString(),
-            message: 'uploaded a new image to the gallery'
-          }
-        ];
-      } catch (error) {
-        return [];
-      }
+      const response = await fetch('/api/gallery');
+      if (!response.ok) throw new Error('Failed to fetch gallery');
+      return response.json();
     },
   });
+
+  // Get recent shop items
+  const { data: shopItems = [] } = useQuery({
+    queryKey: ['/api/shop'],
+    queryFn: async () => {
+      const response = await fetch('/api/shop');
+      if (!response.ok) throw new Error('Failed to fetch shop items');
+      return response.json();
+    },
+  });
+
+  // Get user data
+  const { data: allUsers = [] } = useQuery({
+    queryKey: ['/api/users'],
+    queryFn: async () => {
+      if (user?.rank !== 'Banson') return [];
+      const response = await fetch('/api/users');
+      if (!response.ok) throw new Error('Failed to fetch users');
+      return response.json();
+    },
+    enabled: user?.rank === 'Banson',
+  });
+  
+  // Get recent transactions (only for Banson rank admin users)
+  const { data: recentTransactions = [] } = useQuery({
+    queryKey: ['/api/transactions'],
+    queryFn: async () => {
+      if (user?.rank !== 'Banson') return [];
+      const response = await fetch('/api/transactions');
+      if (!response.ok) throw new Error('Failed to fetch transactions');
+      return response.json();
+    },
+    enabled: user?.rank === 'Banson',
+  });
+  
+  // Get recently approved members (new active users)
+  const { data: recentApprovals = [] } = useQuery({
+    queryKey: ['/api/users/recent-approvals'],
+    queryFn: async () => {
+      if (user?.rank !== 'Banson') return [];
+      const response = await fetch('/api/users');
+      if (!response.ok) throw new Error('Failed to fetch users');
+      const users = await response.json();
+      // Filter for only recently approved users (last 7 days)
+      const oneWeekAgo = new Date();
+      oneWeekAgo.setDate(oneWeekAgo.getDate() - 7);
+      return users.filter((u: any) => 
+        u.status === 'active' && 
+        u.approvedBy !== null && 
+        new Date(u.createdAt) > oneWeekAgo
+      );
+    },
+    enabled: user?.rank === 'Banson',
+  });
+  
+  // Get recently added media (last 10 items)
+  const { data: recentMedia = [] } = useQuery({
+    queryKey: ['/api/gallery/recent'],
+    queryFn: async () => {
+      const response = await fetch('/api/gallery');
+      if (!response.ok) throw new Error('Failed to fetch gallery');
+      const media = await response.json();
+      return media.slice(0, 10).sort((a: any, b: any) => 
+        new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+      );
+    },
+  });
+
+  // Combine and format activities
+  const recentActivities = [
+    ...pendingUsers.map(user => ({
+      id: `pending-${user.id}`,
+      type: 'user_join',
+      user: { name: user.name || user.username, username: user.username },
+      createdAt: user.createdAt,
+      message: 'requested to join Ratatoing Nation'
+    })),
+    ...recentGallery.slice(0, 5).map(item => ({
+      id: `gallery-${item.id}`,
+      type: 'gallery_upload',
+      user: { name: 'Gallery Upload', username: '' },
+      createdAt: item.createdAt || new Date().toISOString(),
+      message: `uploaded "${item.title || 'an image'}" to the gallery`
+    })),
+    ...shopItems.filter(item => item.status === 'sold').slice(0, 5).map(item => ({
+      id: `shop-${item.id}`,
+      type: 'shop_purchase',
+      user: { name: 'Shop Purchase', username: '' },
+      createdAt: item.updatedAt || new Date().toISOString(),
+      message: `purchased "${item.title}" from the shop`
+    }))
+  ].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()).slice(0, 5);
   
   // Format time elapsed
   const formatTimeElapsed = (dateString: string) => {
@@ -97,11 +163,11 @@ export default function DashboardPage() {
     return `${diffDays} day${diffDays === 1 ? '' : 's'} ago`;
   };
   
-  // Get stats
+  // Get real stats from the data
   const stats = {
     pendingApprovals: pendingUsers.length,
-    galleryActivity: 8, // Mock data
-    shopListings: 12, // Mock data
+    galleryActivity: recentGallery.length,
+    shopListings: shopItems.filter(item => item.status === 'available').length,
   };
   
   // Pattern for cheese background
@@ -224,6 +290,53 @@ export default function DashboardPage() {
               </CardContent>
             </Card>
 
+            {/* Recent Transactions - Admin Only */}
+            {user.rank === 'Banson' && (
+              <Card className="bg-card/30 backdrop-blur-lg">
+                <CardHeader className="border-b">
+                  <CardTitle>Recent Transactions</CardTitle>
+                </CardHeader>
+                <CardContent className="p-0">
+                  <ul className="divide-y">
+                    {recentTransactions.length > 0 ? (
+                      recentTransactions.slice(0, 5).map((transaction) => {
+                        const sender = allUsers.find(u => u.id === transaction.senderId);
+                        const recipient = allUsers.find(u => u.id === transaction.recipientId);
+                        return (
+                          <li key={transaction.id} className="flex items-center gap-4 p-4">
+                            <div className="w-10 h-10 rounded-full bg-amber-500 flex items-center justify-center">
+                              <Wallet className="text-white h-5 w-5" />
+                            </div>
+                            <div>
+                              <p className="text-sm font-medium">
+                                {sender?.username || "System"} sent {transaction.amount} PS to {recipient?.username || "Unknown"}
+                              </p>
+                              <p className="text-xs text-muted-foreground">
+                                {transaction.description || "No description"}
+                              </p>
+                              <p className="text-xs text-muted-foreground">
+                                {new Date(transaction.createdAt).toLocaleString()}
+                              </p>
+                            </div>
+                          </li>
+                        );
+                      })
+                    ) : (
+                      <li className="flex items-center gap-4 p-4">
+                        <div className="w-10 h-10 rounded-full bg-gray-500 flex items-center justify-center">
+                          <AlertCircle className="text-white h-5 w-5" />
+                        </div>
+                        <div>
+                          <p className="text-sm font-medium">No recent transactions</p>
+                          <p className="text-xs text-muted-foreground">All monetary transfers will appear here</p>
+                        </div>
+                      </li>
+                    )}
+                  </ul>
+                </CardContent>
+              </Card>
+            )}
+
             {/* Hierarchy Overview */}
             <Card className="bg-card/30 backdrop-blur-lg">
               <CardHeader className="border-b">
@@ -240,7 +353,7 @@ export default function DashboardPage() {
                     </div>
                     <p className="text-sm text-muted-foreground">Supreme leaders with full administrative access.</p>
                     <p className="mt-2 text-xs">
-                      <span className="font-medium">Members:</span> 2
+                      <span className="font-medium">Members:</span> {allUsers.filter(u => u.rank === 'Banson').length || 2}
                     </p>
                   </div>
                   
@@ -253,7 +366,7 @@ export default function DashboardPage() {
                     </div>
                     <p className="text-sm text-muted-foreground">Senior officials with special privileges.</p>
                     <p className="mt-2 text-xs">
-                      <span className="font-medium">Members:</span> 5
+                      <span className="font-medium">Members:</span> {allUsers.filter(u => u.rank === 'Elite Nibbler').length || 0}
                     </p>
                   </div>
                   
@@ -262,11 +375,25 @@ export default function DashboardPage() {
                       <div className="w-10 h-10 rounded-full bg-amber-500 flex items-center justify-center">
                         <Pizza className="text-white h-5 w-5" />
                       </div>
-                      <h4 className="ml-3 font-medium">Pizza Guard</h4>
+                      <h4 className="ml-3 font-medium">Cheese Guard</h4>
                     </div>
                     <p className="text-sm text-muted-foreground">Moderators who oversee content and members.</p>
                     <p className="mt-2 text-xs">
-                      <span className="font-medium">Members:</span> 12
+                      <span className="font-medium">Members:</span> {allUsers.filter(u => u.rank === 'Cheese Guard').length || 0}
+                    </p>
+                  </div>
+                </div>
+                <div className="grid grid-cols-1 mt-4">
+                  <div className="p-4 rounded-lg border border-border">
+                    <div className="flex items-center mb-3">
+                      <div className="w-10 h-10 rounded-full bg-gray-500 flex items-center justify-center">
+                        <User className="text-white h-5 w-5" />
+                      </div>
+                      <h4 className="ml-3 font-medium">Nibbler</h4>
+                    </div>
+                    <p className="text-sm text-muted-foreground">Regular citizens of Ratatoing Nation.</p>
+                    <p className="mt-2 text-xs">
+                      <span className="font-medium">Members:</span> {allUsers.filter(u => u.rank === 'Nibbler' && u.status === 'active').length || 0}
                     </p>
                   </div>
                 </div>
