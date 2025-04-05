@@ -1,4 +1,4 @@
-import type { Express, Request, Response } from "express";
+import express, { type Express, type Request, type Response } from "express";
 import { createServer, type Server } from "http";
 import { setupAuth, comparePasswords, hashPassword } from "./auth";
 import { storage } from "./storage";
@@ -13,9 +13,10 @@ import {
   users
 } from "@shared/schema";
 import { db } from "./db";
+import { sql, eq } from "drizzle-orm";
 import { ZodError } from "zod";
 import { fromZodError } from "zod-validation-error";
-import { sql } from "drizzle-orm";
+import { PgColumn } from "drizzle-orm/pg-core";
 
 // Helper to check if user is authenticated
 function isAuthenticated(req: Request, res: Response, next: Function) {
@@ -669,10 +670,22 @@ export async function registerRoutes(app: Express): Promise<Server> {
         if (t.recipientId) userIds.add(t.recipientId);
       });
       
-      const allUsers = await db
-        .select({ id: users.id, username: users.username, name: users.name })
-        .from(users)
-        .where(sql`${users.id} IN (${Array.from(userIds).join(',')})`);
+      // Create array from the Set for query
+      const userIdsArray = Array.from(userIds);
+      
+      // Only fetch users if there are any IDs
+      const allUsers = userIdsArray.length > 0 ? 
+        await Promise.all(userIdsArray.map(async (id) => {
+          const [user] = await db.select({
+            id: users.id,
+            username: users.username, 
+            name: users.name
+          })
+          .from(users)
+          .where(eq(users.id, id));
+          return user;
+        })) :
+        [];
       
       // Add user info to transactions
       const transactionsWithUsers = allTransactions.map(t => {
@@ -700,11 +713,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
       });
       
       // Fetch users information
-      const relatedUsers = userIds.size > 0 
-        ? await db
-            .select({ id: users.id, username: users.username, name: users.name })
+      const userIdsArray = Array.from(userIds);
+      const relatedUsers = userIdsArray.length > 0 
+        ? await Promise.all(userIdsArray.map(async (id) => {
+            const [user] = await db.select({
+              id: users.id,
+              username: users.username, 
+              name: users.name
+            })
             .from(users)
-            .where(sql`${users.id} IN (${Array.from(userIds).join(',')})`)
+            .where(eq(users.id, id));
+            return user;
+          }))
         : [];
       
       // Add user info to transactions
