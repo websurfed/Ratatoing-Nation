@@ -15,10 +15,9 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useMutation } from "@tanstack/react-query";
 
-// Create a simpler profile update schema with just name and password
+// Create a simpler profile update schema with just name
 const profileUpdateSchema = z.object({
-  name: z.string().min(1, "Name is required"),
-  currentPassword: z.string().min(1, "Please enter your current password to verify changes")
+  name: z.string().min(1, "Name is required")
 });
 
 // Create a new type that includes the current password
@@ -49,8 +48,7 @@ export default function ProfilePage() {
   const profileForm = useForm<ProfileFormValues>({
     resolver: zodResolver(profileUpdateSchema),
     defaultValues: {
-      name: user?.name || "",
-      currentPassword: ""
+      name: user?.name || ""
     }
   });
 
@@ -58,8 +56,7 @@ export default function ProfilePage() {
   useEffect(() => {
     if (user) {
       profileForm.reset({
-        name: user.name || "",
-        currentPassword: ""
+        name: user.name || ""
       });
     }
   }, [user, profileForm]);
@@ -87,8 +84,7 @@ export default function ProfilePage() {
       });
       queryClient.invalidateQueries({ queryKey: ['/api/user'] });
       profileForm.reset({
-        name: user?.name || "",
-        currentPassword: ""
+        name: user?.name || ""
       });
     },
     onError: (error: Error) => {
@@ -226,26 +222,7 @@ export default function ProfilePage() {
                         />
                         
 
-                        <FormField
-                          control={profileForm.control}
-                          name="currentPassword"
-                          render={({ field }) => (
-                            <FormItem>
-                              <FormLabel>Current Password</FormLabel>
-                              <FormControl>
-                                <Input 
-                                  type="password" 
-                                  placeholder="Verify with your current password" 
-                                  {...field} 
-                                />
-                              </FormControl>
-                              <FormDescription>
-                                Required to confirm changes to your profile
-                              </FormDescription>
-                              <FormMessage />
-                            </FormItem>
-                          )}
-                        />
+
                         
                         <Button 
                           type="submit" 

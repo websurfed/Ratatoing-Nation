@@ -488,23 +488,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Update profile
   app.patch("/api/profile", isAuthenticated, async (req, res) => {
     try {
-      const { currentPassword, ...updateData } = req.body;
+      const updateData = req.body;
       
-      if (!currentPassword) {
-        return res.status(400).json({ message: "Current password is required" });
-      }
-      
-      // Verify current password
+      // Verify user exists
       const user = await storage.getUser(req.user.id);
       if (!user) {
         return res.status(404).json({ message: "User not found" });
-      }
-      
-      // comparePasswords is already imported at the top of the file
-      const isPasswordValid = await comparePasswords(currentPassword, user.password);
-      
-      if (!isPasswordValid) {
-        return res.status(401).json({ message: "Current password is incorrect" });
       }
       
       // Ensure email cannot be updated (only name is allowed)
