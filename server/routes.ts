@@ -1070,37 +1070,27 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // In the GET /api/tasks route, modify it to:
   app.get("/api/tasks", isAuthenticated, async (req, res) => {
     try {
-      // Get both assigned tasks and job-wide tasks
-      const tasks = await storage.getUserTasks(req.user.id);
-
-      // Get the user's job to include any job-wide tasks
-      const [user] = await db.select({ job: users.job })
-        .from(users)
-        .where(eq(users.id, req.user.id));
-
-      if (user?.job) {
-        const jobTasks = await db.select().from(tasks)
-          .where(and(
-            eq(tasks.assignedJob, user.job),
-            isNull(tasks.assignedTo), // Job-wide tasks
+      const query = db.select()
+        .from(tasks)
+        .where(
+          and(
+            or(
+              eq(tasks.assignedTo, req.user.id),
+              and(
+                eq(tasks.assignedJob, req.user.job || ''),
+                isNull(tasks.assignedTo)
+              )
+            ),
             or(
               eq(tasks.status, 'pending'),
               eq(tasks.status, 'completed')
             )
-          ))
-          .orderBy(desc(tasks.createdAt));
-
-        // Combine and deduplicate
-        const allTasks = [...tasks, ...jobTasks]
-          .filter((task, index, self) => 
-            index === self.findIndex(t => t.id === task.id)
           )
-          .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+        )
+        .orderBy(desc(tasks.createdAt));
 
-        return res.json(allTasks);
-      }
-
-      res.json(tasks);
+      const results = await query;
+      res.json(results);
     } catch (error) {
       console.error("Error fetching tasks:", error);
       res.status(500).json({ message: "Failed to fetch tasks" });
