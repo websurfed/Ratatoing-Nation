@@ -265,8 +265,20 @@ export class DatabaseStorage implements IStorage {
 
   async getPendingApplications(): Promise<JobApplication[]> {
     return await db
-      .select()
+      .select({
+        id: jobApplications.id,
+        userId: jobApplications.userId,
+        job: jobApplications.job,
+        description: jobApplications.description,
+        status: jobApplications.status,
+        createdAt: jobApplications.createdAt,
+        updatedAt: jobApplications.updatedAt,
+
+        username: users.username,
+        name: users.name,
+      })
       .from(jobApplications)
+      .innerJoin(users, eq(jobApplications.userId, users.id))
       .where(eq(jobApplications.status, 'pending'))
       .orderBy(desc(jobApplications.createdAt));
   }

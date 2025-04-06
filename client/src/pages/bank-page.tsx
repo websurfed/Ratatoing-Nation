@@ -477,8 +477,8 @@ export default function BankPage() {
                                   : 'bg-destructive/20 text-destructive'
                               }`}>
                                 {transaction.recipientId === user.id 
-                                  ? <ArrowDown className="h-5 w-5" /> 
-                                  : <ArrowUp className="h-5 w-5" />
+                                  ? <ArrowUp className="h-5 w-5" /> 
+                                  : <ArrowDown className="h-5 w-5" />
                                 }
                               </div>
                               <div className="ml-3">

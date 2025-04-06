@@ -11,7 +11,9 @@ export const USER_STATUS = ['pending', 'active', 'banned'] as const;
 export type UserStatus = typeof USER_STATUS[number];
 
 export const USER_JOBS = [
-  'ArcadeManager',
+  'Arcade Manager',
+  'Media Curator',
+  'Forum Moderator',
 ] as const;
 export type UserJob = typeof USER_JOBS[number] | null;
 
@@ -167,9 +169,6 @@ export type InsertUser = z.infer<typeof insertUserSchema>;
 export type LoginUser = z.infer<typeof loginUserSchema>;
 export type UpdateUser = z.infer<typeof updateUserSchema>;
 
-export type JobApplication = typeof jobApplications.$inferSelect;
-export type InsertJobApplication = z.infer<typeof insertJobApplicationSchema>;
-
 export type Media = typeof media.$inferSelect;
 export type InsertMedia = z.infer<typeof insertMediaSchema>;
 
@@ -181,3 +180,21 @@ export type InsertEmail = z.infer<typeof insertEmailSchema>;
 
 export type Transaction = typeof transactions.$inferSelect;
 export type InsertTransaction = z.infer<typeof insertTransactionSchema>;
+
+export interface JobApplication {
+  id: number;
+  userId: number;
+  job: string;
+  description: string;
+  status: 'pending' | 'approved' | 'rejected';
+  createdAt: Date;
+  updatedAt: Date;
+  // Add user fields directly
+  username: string;
+  name: string;
+  profilePicture: string | null;
+}
+
+export type JobApplicationWithUser = typeof jobApplications.$inferSelect & {
+  user: Pick<User, 'username' | 'name' | 'profilePicture'>;
+};

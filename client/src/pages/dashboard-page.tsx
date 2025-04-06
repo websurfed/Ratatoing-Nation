@@ -32,7 +32,7 @@ import { Link } from "wouter";
 export default function DashboardPage() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const { user } = useAuth();
-  
+
   // Get pending users for admin
   const { data: pendingUsers = [] } = useQuery({
     queryKey: ['/api/users/pending'],
@@ -42,8 +42,9 @@ export default function DashboardPage() {
       return response.json();
     },
     enabled: user?.rank === 'Banson',
+    refetchOnMount: true,
   });
-  
+
   // Get recent gallery uploads
   const { data: recentGallery = [] } = useQuery({
     queryKey: ['/api/gallery'],
@@ -52,6 +53,7 @@ export default function DashboardPage() {
       if (!response.ok) throw new Error('Failed to fetch gallery');
       return response.json();
     },
+    refetchOnMount: true,
   });
 
   // Get recent shop items
@@ -62,6 +64,7 @@ export default function DashboardPage() {
       if (!response.ok) throw new Error('Failed to fetch shop items');
       return response.json();
     },
+    refetchOnMount: true,
   });
 
   // Get user data
@@ -74,20 +77,27 @@ export default function DashboardPage() {
       return response.json();
     },
     enabled: user?.rank === 'Banson',
+    refetchOnMount: true,
   });
-  
-  // Get recent transactions (only for Banson rank admin users)
+
+  // Get recent transactions (sorted by newest first)
   const { data: recentTransactions = [] } = useQuery({
     queryKey: ['/api/transactions'],
     queryFn: async () => {
       if (user?.rank !== 'Banson') return [];
       const response = await fetch('/api/transactions');
       if (!response.ok) throw new Error('Failed to fetch transactions');
-      return response.json();
+      const transactions = await response.json();
+      return transactions
+        .sort((a: any, b: any) => 
+          new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+        )
+        .slice(0, 5); // Only return the 5 most recent
     },
     enabled: user?.rank === 'Banson',
+    refetchOnMount: true,
   });
-  
+
   // Get recently approved members (new active users)
   const { data: recentApprovals = [] } = useQuery({
     queryKey: ['/api/users/recent-approvals'],
@@ -106,8 +116,9 @@ export default function DashboardPage() {
       );
     },
     enabled: user?.rank === 'Banson',
+    refetchOnMount: true,
   });
-  
+
   // Get recently added media (last 10 items)
   const { data: recentMedia = [] } = useQuery({
     queryKey: ['/api/gallery/recent'],
@@ -115,10 +126,13 @@ export default function DashboardPage() {
       const response = await fetch('/api/gallery');
       if (!response.ok) throw new Error('Failed to fetch gallery');
       const media = await response.json();
-      return media.slice(0, 10).sort((a: any, b: any) => 
-        new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
-      );
+      return media
+        .sort((a: any, b: any) => 
+          new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+        )
+        .slice(0, 10);
     },
+    refetchOnMount: true,
   });
 
   // Combine and format activities
@@ -145,44 +159,44 @@ export default function DashboardPage() {
       message: `purchased "${item.title}" from the shop`
     }))
   ].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()).slice(0, 5);
-  
+
   // Format time elapsed
   const formatTimeElapsed = (dateString: string) => {
     const date = new Date(dateString);
     const now = new Date();
     const diffMs = now.getTime() - date.getTime();
     const diffMins = Math.floor(diffMs / 60000);
-    
+
     if (diffMins < 1) return 'just now';
     if (diffMins < 60) return `${diffMins} minute${diffMins === 1 ? '' : 's'} ago`;
-    
+
     const diffHours = Math.floor(diffMins / 60);
     if (diffHours < 24) return `${diffHours} hour${diffHours === 1 ? '' : 's'} ago`;
-    
+
     const diffDays = Math.floor(diffHours / 24);
     return `${diffDays} day${diffDays === 1 ? '' : 's'} ago`;
   };
-  
+
   // Get real stats from the data
   const stats = {
     pendingApprovals: pendingUsers.length,
     galleryActivity: recentGallery.length,
     shopListings: shopItems.filter(item => item.status === 'available').length,
   };
-  
+
   // Pattern for cheese background
   const cheesePatternStyle = {
     backgroundImage: "radial-gradient(rgba(255, 199, 44, 0.15) 2px, transparent 2px)",
     backgroundSize: "24px 24px",
   };
-  
+
   if (!user) return null;
-  
+
   return (
     <div className="min-h-screen bg-background transition-colors" style={cheesePatternStyle}>
       <Sidebar open={sidebarOpen} setOpen={setSidebarOpen} />
       <MobileHeader toggleSidebar={() => setSidebarOpen(!sidebarOpen)} />
-      
+
       <main className="lg:pl-64 pt-16 lg:pt-0">
         <div className="container mx-auto p-4 md:p-6">
           <div className="space-y-6">
@@ -219,7 +233,7 @@ export default function DashboardPage() {
                   </div>
                 </CardContent>
               </Card>
-              
+
               {user.rank === 'Banson' && (
                 <Card className="bg-card/30 backdrop-blur-lg">
                   <CardContent className="pt-6">
@@ -232,7 +246,7 @@ export default function DashboardPage() {
                   </CardContent>
                 </Card>
               )}
-              
+
               <Card className="bg-card/30 backdrop-blur-lg">
                 <CardContent className="pt-6">
                   <div className="flex items-center justify-between mb-2">
@@ -243,7 +257,7 @@ export default function DashboardPage() {
                   <p className="text-xs text-muted-foreground">New media uploads today</p>
                 </CardContent>
               </Card>
-              
+
               <Card className="bg-card/30 backdrop-blur-lg">
                 <CardContent className="pt-6">
                   <div className="flex items-center justify-between mb-2">
@@ -299,7 +313,7 @@ export default function DashboardPage() {
                 <CardContent className="p-0">
                   <ul className="divide-y">
                     {recentTransactions.length > 0 ? (
-                      recentTransactions.slice(0, 5).map((transaction) => {
+                      recentTransactions.map((transaction) => { // No .slice needed here
                         const sender = allUsers.find(u => u.id === transaction.senderId);
                         const recipient = allUsers.find(u => u.id === transaction.recipientId);
                         return (
@@ -356,7 +370,7 @@ export default function DashboardPage() {
                       <span className="font-medium">Members:</span> {allUsers.filter(u => u.rank === 'Banson').length || 2}
                     </p>
                   </div>
-                  
+
                   <div className="p-4 rounded-lg border border-border">
                     <div className="flex items-center mb-3">
                       <div className="w-10 h-10 rounded-full bg-green-500 flex items-center justify-center">
@@ -369,7 +383,7 @@ export default function DashboardPage() {
                       <span className="font-medium">Members:</span> {allUsers.filter(u => u.rank === 'Elite Nibbler').length || 0}
                     </p>
                   </div>
-                  
+
                   <div className="p-4 rounded-lg border border-border">
                     <div className="flex items-center mb-3">
                       <div className="w-10 h-10 rounded-full bg-amber-500 flex items-center justify-center">

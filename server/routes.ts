@@ -893,6 +893,38 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Employee quits their job
+  app.post("/api/jobs/quit", isAuthenticated, async (req, res) => {
+    try {
+      const user = await storage.getUser(req.user.id);
+
+      if (!user?.job) {
+        return res.status(400).json({ message: "You don't have a job to quit" });
+      }
+
+      // Update user to remove job
+      const updatedUser = await storage.updateUser(req.user.id, { job: null });
+
+      if (!updatedUser) {
+        return res.status(500).json({ message: "Failed to quit job" });
+      }
+
+      // Return the updated user without password
+      const { password, ...userWithoutPassword } = updatedUser;
+      res.json({ 
+        success: true,
+        message: "Successfully quit your job",
+        user: userWithoutPassword
+      });
+    } catch (error) {
+      console.error("Error quitting job:", error);
+      res.status(500).json({ 
+        success: false,
+        message: "Error quitting job" 
+      });
+    }
+  });
+  
   // Get user's job applications
   app.get("/api/jobs/my-applications", isAuthenticated, async (req, res) => {
     const applications = await storage.getUserApplications(req.user.id);
