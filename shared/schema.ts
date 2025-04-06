@@ -9,6 +9,10 @@ export type UserRank = typeof USER_RANKS[number];
 // User status
 export const USER_STATUS = ['pending', 'active', 'banned'] as const;
 export type UserStatus = typeof USER_STATUS[number];
+export type Task = typeof tasks.$inferSelect;
+export type Payout = typeof payouts.$inferSelect;
+export type InsertTask = typeof tasks.$inferInsert;
+export type InsertPayout = typeof payouts.$inferInsert;
 
 export const USER_JOBS = [
   'Arcade Manager',
@@ -32,6 +36,31 @@ export const users = pgTable("users", {
   job: text("job").$type<UserJob>(),
   pocketSniffles: integer("pocket_sniffles").notNull().default(0),
   approvedBy: integer("approved_by").references((): any => users.id),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
+export const tasks = pgTable("tasks", {
+  id: serial("id").primaryKey(),
+  title: text("title").notNull(),
+  description: text("description").notNull(),
+  assignedJob: text("assigned_job").$type<UserJob>().notNull(),
+  assignedTo: integer("assigned_to").references(() => users.id),
+  originalTaskId: integer("original_task_id").references(() => tasks.id), // Add this for tracking template relationship
+  createdBy: integer("created_by").notNull().references(() => users.id),
+  dueDate: timestamp("due_date"),
+  status: text("status").notNull().default('pending'), // 'template', 'pending', 'completed', 'cancelled'
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  completedBy: integer("completed_by").references(() => users.id),
+  completedAt: timestamp("completed_at"),
+});
+
+export const payouts = pgTable("payouts", {
+  id: serial("id").primaryKey(),
+  taskId: integer("task_id").references(() => tasks.id),
+  amount: integer("amount").notNull(),
+  paidBy: integer("paid_by").notNull().references(() => users.id),
+  job: text("job").$type<UserJob>().notNull(),
+  description: text("description"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 

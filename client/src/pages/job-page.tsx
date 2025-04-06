@@ -26,7 +26,7 @@ import { apiRequest } from "@/lib/queryClient";
 import { Sidebar } from "@/components/layout/sidebar";
 import { MobileHeader } from "@/components/layout/mobile-header";
 import { USER_JOBS } from "@shared/schema";
-import { RefreshCw, Briefcase } from "lucide-react";
+import { RefreshCw, Briefcase, Loader2 } from "lucide-react";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -37,6 +37,8 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import { ClipboardList } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
 
 const applicationSchema = z.object({
   job: z.string().min(1, "Please select a job"),
@@ -65,6 +67,37 @@ export default function JobsPage() {
       return await res.json();
     }
   });
+
+  const { data: tasksData, isLoading: tasksLoading, refetch: refetchTasks } = useQuery({
+    queryKey: ['employee-tasks'],
+    queryFn: async () => {
+      const res = await apiRequest("GET", "/api/tasks");
+      return await res.json();
+    },
+    enabled: !!user?.job
+  });
+
+  const completeTaskMutation = useMutation({
+    mutationFn: async (taskId: number) => {
+      const res = await apiRequest("PATCH", `/api/tasks/${taskId}/complete`, {});
+      return await res.json();
+    },
+    onSuccess: () => {
+      toast({ title: "Task marked as completed" });
+      refetchTasks();
+    },
+    onError: (error: Error) => {
+      toast({
+        title: "Error completing task",
+        description: error.message,
+        variant: "destructive"
+      });
+    }
+  });
+
+  const handleCompleteTask = (taskId: number) => {
+    completeTaskMutation.mutate(taskId);
+  };
 
   const applyMutation = useMutation({
     mutationFn: async (values: z.infer<typeof applicationSchema>) => {
@@ -275,24 +308,78 @@ export default function JobsPage() {
                 )}
               </>
             ) : (
-              <Card>
-                <CardHeader>
-                  <CardTitle>Current Employment</CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  <div className="border rounded-lg p-4">
-                    <div className="flex justify-between items-start">
-                      <h4 className="font-medium">{user.job}</h4>
-                      <span className="px-2 py-1 rounded text-xs bg-green-100 text-green-800">
-                        Employed
-                      </span>
+              <>
+                <Card>
+                  <CardHeader>
+                    <CardTitle>Current Employment</CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-4">
+                    <div className="border rounded-lg p-4">
+                      <div className="flex justify-between items-start">
+                        <h4 className="font-medium">{user.job}</h4>
+                        <span className="px-2 py-1 rounded text-xs bg-green-100 text-green-800">
+                          Employed
+                        </span>
+                      </div>
+                      <p className="text-sm text-muted-foreground mt-2">
+                        You are currently employed in this position
+                      </p>
                     </div>
-                    <p className="text-sm text-muted-foreground mt-2">
-                      You are currently employed in this position
-                    </p>
-                  </div>
-                </CardContent>
-              </Card>
+                  </CardContent>
+                </Card>
+
+                <Card>
+                  <CardHeader>
+                    <CardTitle>Your Tasks</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    {tasksLoading ? (
+                      <div className="flex justify-center py-8">
+                        <Loader2 className="h-6 w-6 animate-spin" />
+                      </div>
+                    ) : tasksData?.length ? (
+                      <div className="space-y-4">
+                        {tasksData.map((task: any) => (
+                          <div key={task.id} className="border rounded-lg p-4">
+                            <div className="flex justify-between items-start">
+                              <h4 className="font-medium">{task.title}</h4>
+                              <Badge variant="outline">{task.status}</Badge>
+                            </div>
+                            <p className="text-sm text-muted-foreground mt-2">{task.description}</p>
+                            <div className="flex justify-end mt-4 space-x-2">
+                              {task.status === 'completed' ? (
+                                <Button 
+                                  variant="outline" 
+                                  size="sm"
+                                  className="bg-green-100 text-green-800 hover:bg-green-100"
+                                  disabled
+                                >
+                                  Completed
+                                </Button>
+                              ) : (
+                                <Button 
+                                  variant="outline" 
+                                  size="sm"
+                                  onClick={() => handleCompleteTask(task.id)}
+                                >
+                                  Mark Complete
+                                </Button>
+                              )}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="text-center py-8">
+                        <ClipboardList className="mx-auto h-8 w-8 text-muted-foreground" />
+                        <p className="mt-2 text-sm text-muted-foreground">
+                          No tasks assigned to your position
+                        </p>
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+              </>
             )}
           </div>
         </div>

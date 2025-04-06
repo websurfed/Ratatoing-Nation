@@ -15,7 +15,7 @@ async function runMigration() {
   try {
     await client.connect();
     const migration = await fs.readFile(
-      join(__dirname, '../migrations/0002_add_job_columns.sql'),
+      join(__dirname, '../migrations/0003_add_tasks_system.sql'),
       'utf8'
     );
     await client.query(migration);

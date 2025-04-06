@@ -10,13 +10,17 @@ import {
   insertShopItemSchema, 
   insertEmailSchema,
   transactions,
-  users
+  users,
+  tasks,  // Add this
+  payouts // Add this
 } from "@shared/schema";
 import { db } from "./db";
 import { sql, eq } from "drizzle-orm";
+import { desc, and } from "drizzle-orm";
 import { ZodError } from "zod";
 import { fromZodError } from "zod-validation-error";
 import { PgColumn } from "drizzle-orm/pg-core";
+import { isNull, or } from "drizzle-orm";
 
 // Helper to check if user is authenticated
 function isAuthenticated(req: Request, res: Response, next: Function) {
@@ -703,19 +707,39 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get("/api/transactions", isAuthenticated, async (req, res) => {
     if (req.user.rank === 'Banson') {
       // For admin users, fetch all transactions
-      const allTransactions = await db.select().from(transactions).orderBy(transactions.createdAt, 'desc').limit(20);
-      
+      const allTransactions = await db.select().from(transactions)
+        .orderBy(desc(transactions.createdAt))
+        .limit(20);
+
+      // Fetch payouts separately
+      const allPayouts = await db.select().from(payouts)
+        .orderBy(desc(payouts.createdAt))
+        .limit(20);
+
+      // Combine both transaction types
+      const combined = [
+        ...allTransactions.map(t => ({ ...t, recordType: 'transaction' })),
+        ...allPayouts.map(p => ({
+          id: p.id,
+          senderId: p.paidBy,
+          amount: p.amount * -1, // Negative amount to show as outgoing
+          type: 'salary_payout',
+          description: p.description || `Salary payout for ${p.job}`,
+          createdAt: p.createdAt,
+          recordType: 'payout',
+          job: p.job
+        }))
+      ].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+       .slice(0, 20);
+
       // Fetch all usernames for the transactions
       const userIds = new Set<number>();
-      allTransactions.forEach(t => {
+      combined.forEach(t => {
         if (t.senderId) userIds.add(t.senderId);
         if (t.recipientId) userIds.add(t.recipientId);
       });
-      
-      // Create array from the Set for query
+
       const userIdsArray = Array.from(userIds);
-      
-      // Only fetch users if there are any IDs
       const allUsers = userIdsArray.length > 0 ? 
         await Promise.all(userIdsArray.map(async (id) => {
           const [user] = await db.select({
@@ -728,9 +752,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
           return user;
         })) :
         [];
-      
+
       // Add user info to transactions
-      const transactionsWithUsers = allTransactions.map(t => {
+      const transactionsWithUsers = combined.map(t => {
         const sender = allUsers.find(u => u.id === t.senderId);
         const recipient = allUsers.find(u => u.id === t.recipientId);
         return {
@@ -741,20 +765,31 @@ export async function registerRoutes(app: Express): Promise<Server> {
           recipientName: recipient?.name || null
         };
       });
-      
+
       return res.json(transactionsWithUsers);
     } else {
       // For regular users, only fetch their own transactions
       const userTransactions = await storage.getUserTransactions(req.user.id);
-      
+
+      // Also get salary payments they received
+      const salaryPayments = await db.select()
+        .from(transactions)
+        .where(and(
+          eq(transactions.recipientId, req.user.id),
+          eq(transactions.type, 'salary')
+        ))
+        .orderBy(desc(transactions.createdAt));
+
+      const combined = [...userTransactions, ...salaryPayments]
+        .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+
       // Get unique user IDs from transactions
       const userIds = new Set<number>();
-      userTransactions.forEach(t => {
+      combined.forEach(t => {
         if (t.senderId && t.senderId !== req.user.id) userIds.add(t.senderId);
         if (t.recipientId && t.recipientId !== req.user.id) userIds.add(t.recipientId);
       });
-      
-      // Fetch users information
+
       const userIdsArray = Array.from(userIds);
       const relatedUsers = userIdsArray.length > 0 
         ? await Promise.all(userIdsArray.map(async (id) => {
@@ -768,17 +803,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
             return user;
           }))
         : [];
-      
+
       // Add user info to transactions
-      const transactionsWithUsers = userTransactions.map(t => {
+      const transactionsWithUsers = combined.map(t => {
         const sender = t.senderId === req.user.id 
           ? { username: req.user.username, name: req.user.name } 
           : relatedUsers.find(u => u.id === t.senderId);
-        
+
         const recipient = t.recipientId === req.user.id 
           ? { username: req.user.username, name: req.user.name } 
           : relatedUsers.find(u => u.id === t.recipientId);
-        
+
         return {
           ...t,
           senderUsername: sender?.username || null,
@@ -787,7 +822,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           recipientName: recipient?.name || null
         };
       });
-      
+
       res.json(transactionsWithUsers);
     }
   });
@@ -968,6 +1003,338 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
 
     res.json(application);
+  });
+
+  // Assign task to employees (admin only)
+  app.post("/api/tasks/:id/assign", isAdmin, async (req, res) => {
+    try {
+      const taskId = parseInt(req.params.id);
+      const { userIds } = req.body;
+
+      if (!userIds || !Array.isArray(userIds)) {
+        return res.status(400).json({ message: "User IDs array is required" });
+      }
+
+      // Verify the task exists and is a template
+      const [task] = await db.select()
+        .from(tasks)
+        .where(and(
+          eq(tasks.id, taskId),
+          eq(tasks.status, 'template')
+        ))
+
+      if (!task) {
+        return res.status(404).json({ message: "Task template not found" });
+      }
+
+      // Assign to users
+      const success = await storage.assignTaskToUsers(taskId, userIds);
+
+      if (!success) {
+        return res.status(400).json({ message: "Failed to assign task" });
+      }
+
+      res.json({ message: "Task assigned successfully" });
+    } catch (error) {
+      console.error("Error assigning task:", error);
+      res.status(500).json({ message: "Failed to assign task" });
+    }
+  });
+
+  // Task routes
+  app.post("/api/tasks", isAdmin, async (req, res) => {
+    try {
+      const { title, description, assignedJob, dueDate } = req.body;
+
+      if (!title || !description || !assignedJob) {
+        return res.status(400).json({ message: "Missing required fields" });
+      }
+
+      // First create a template task (not assigned to anyone yet)
+      const [task] = await db.insert(tasks).values({
+        title,
+        description,
+        assignedJob,
+        dueDate: dueDate ? new Date(dueDate) : null,
+        createdBy: req.user.id,
+        status: 'template' // New status for unassigned tasks
+      }).returning();
+
+      res.status(201).json(task);
+    } catch (error) {
+      console.error("Error creating task:", error);
+      res.status(500).json({ message: "Failed to create task" });
+    }
+  });
+
+  // In the GET /api/tasks route, modify it to:
+  app.get("/api/tasks", isAuthenticated, async (req, res) => {
+    try {
+      // Get both assigned tasks and job-wide tasks
+      const tasks = await storage.getUserTasks(req.user.id);
+
+      // Get the user's job to include any job-wide tasks
+      const [user] = await db.select({ job: users.job })
+        .from(users)
+        .where(eq(users.id, req.user.id));
+
+      if (user?.job) {
+        const jobTasks = await db.select()
+          .from(tasks)
+          .where(and(
+            eq(tasks.assignedJob, user.job),
+            isNull(tasks.assignedTo), // Job-wide tasks
+            or(
+              eq(tasks.status, 'pending'),
+              eq(tasks.status, 'completed')
+            )
+          ));
+
+        // Combine and deduplicate
+        const allTasks = [...tasks, ...jobTasks]
+          .filter((task, index, self) => 
+            index === self.findIndex(t => t.id === task.id)
+          )
+          .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+
+        return res.json(allTasks);
+      }
+
+      res.json(tasks);
+    } catch (error) {
+      console.error("Error fetching tasks:", error);
+      res.status(500).json({ message: "Failed to fetch tasks" });
+    }
+  });
+
+  // Add this new route for getting job-wide tasks
+  app.get("/api/tasks/job-wide", isAuthenticated, async (req, res) => {
+    try {
+      const user = await storage.getUser(req.user.id);
+      if (!user?.job) {
+        return res.json([]);
+      }
+
+      const tasks = await db.select()
+        .from(tasks)
+        .where(and(
+          eq(tasks.assignedJob, user.job),
+          isNull(tasks.assignedTo), // Only job-wide tasks
+          or(
+            eq(tasks.status, 'pending'),
+            eq(tasks.status, 'completed')
+          )
+        ))
+        .orderBy(desc(tasks.createdAt));
+
+      res.json(tasks);
+    } catch (error) {
+      console.error("Error fetching job-wide tasks:", error);
+      res.status(500).json({ message: "Failed to fetch tasks" });
+    }
+  });
+
+  // Payout routes
+  app.get("/api/payouts", isAdmin, async (req, res) => {
+    try {
+      const results = await db.select()
+        .from(payouts)
+        .orderBy(desc(payouts.createdAt));
+      res.json(results);
+    } catch (error) {
+      console.error("Error fetching payouts:", error);
+      res.status(500).json({ message: "Failed to fetch payout history" });
+    }
+  });
+  
+  app.post("/api/payouts", isAdmin, async (req, res) => {
+    try {
+      const { job, amount, description, taskId } = req.body;
+
+      // Validate input
+      if (!job || !amount || isNaN(amount)) {
+        return res.status(400).json({ message: "Invalid payout data" });
+      }
+
+      // Get admin balance
+      const [admin] = await db.select()
+        .from(users)
+        .where(eq(users.id, req.user.id));
+
+      // Get employees for this job
+      const employees = await db.select()
+        .from(users)
+        .where(and(
+          eq(users.job, job),
+          eq(users.status, 'active')
+        ));
+
+      if (employees.length === 0) {
+        return res.status(400).json({ message: "No active employees found for this job" });
+      }
+
+      const totalPayout = amount * employees.length;
+      if (admin.pocketSniffles < totalPayout) {
+        return res.status(400).json({ 
+          message: `Insufficient funds. Needed: ${totalPayout}, Available: ${admin.pocketSniffles}`
+        });
+      }
+
+      // Create payout record
+      const [payout] = await db.insert(payouts).values({
+        job,
+        amount,
+        description,
+        paidBy: req.user.id,
+        taskId
+      }).returning();
+
+      // Process payments
+      await db.transaction(async (tx) => {
+        // Deduct from admin
+        await tx.update(users)
+          .set({ pocketSniffles: admin.pocketSniffles - totalPayout })
+          .where(eq(users.id, req.user.id));
+
+        // Add to each employee
+        for (const employee of employees) {
+          await tx.update(users)
+            .set({ pocketSniffles: employee.pocketSniffles + amount })
+            .where(eq(users.id, employee.id));
+
+          // Record transaction - Modified to include more details
+          await tx.insert(transactions).values({
+            senderId: req.user.id,
+            recipientId: employee.id,
+            amount,
+            type: 'salary',
+            description: description || `Salary for ${job}`,
+            createdAt: new Date(),
+            payoutId: payout.id, 
+            status: 'completed'
+          });
+        }
+      });
+
+      res.status(201).json(payout);
+    } catch (error) {
+      console.error("Error processing payout:", error);
+      res.status(500).json({ message: "Failed to process payout" });
+    }
+  });
+
+  // Delete a task (user can delete their own, admin can delete any)
+  app.delete("/api/tasks/:id", isAuthenticated, async (req, res) => {
+    try {
+      const taskId = parseInt(req.params.id);
+
+      // Get the task first to verify permissions
+      const [task] = await db.select()
+        .from(tasks)
+        .where(eq(tasks.id, taskId));
+
+      if (!task) {
+        return res.status(404).json({ message: "Task not found" });
+      }
+
+      // Check permissions:
+      // - Admin can delete any task
+      // - Regular users can only delete their own tasks
+      // - Task creator can delete template tasks
+      const canDelete = req.user.rank === 'Banson' || 
+                       task.assignedTo === req.user.id || 
+                       (task.status === 'template' && task.createdBy === req.user.id);
+
+      if (!canDelete) {
+        return res.status(403).json({ message: "Not authorized to delete this task" });
+      }
+
+      const success = await storage.deleteTask(taskId);
+
+      if (!success) {
+        return res.status(404).json({ message: "Task not found or already deleted" });
+      }
+
+      res.json({ message: "Task deleted successfully" });
+    } catch (error) {
+      console.error("Error deleting task:", error);
+      res.status(500).json({ message: "Failed to delete task" });
+    }
+  });
+
+  // Admin endpoint to delete a template task and all its assignments
+  app.delete("/api/tasks/template/:id", isAdmin, async (req, res) => {
+    try {
+      const taskId = parseInt(req.params.id);
+
+      // Verify it's a template task
+      const [task] = await db.select()
+        .from(tasks)
+        .where(and(
+          eq(tasks.id, taskId),
+          eq(tasks.status, 'template')
+        ));
+
+      if (!task) {
+        return res.status(404).json({ message: "Template task not found" });
+      }
+
+      const success = await storage.deleteTaskAndAssignments(taskId);
+
+      if (!success) {
+        return res.status(404).json({ message: "Failed to delete template and assignments" });
+      }
+
+      res.json({ 
+        message: "Template task and all assignments deleted successfully",
+        deletedTemplateId: taskId
+      });
+    } catch (error) {
+      console.error("Error deleting template task:", error);
+      res.status(500).json({ message: "Failed to delete template task" });
+    }
+  });
+
+  // Complete a task
+  app.patch("/api/tasks/:id/complete", isAuthenticated, async (req, res) => {
+    try {
+      const taskId = parseInt(req.params.id);
+      const task = await storage.completeUserTask(taskId, req.user.id);
+
+      if (!task) {
+        return res.status(404).json({ message: "Task not found or already completed" });
+      }
+
+      res.json(task);
+    } catch (error) {
+      console.error("Error completing task:", error);
+      res.status(500).json({ message: "Failed to complete task" });
+    }
+  });
+
+
+  // Get single task
+  app.get("/api/tasks/:id", isAuthenticated, async (req, res) => {
+    try {
+      const taskId = parseInt(req.params.id);
+      const [task] = await db.select()
+        .from(tasks)
+        .where(eq(tasks.id, taskId));
+
+      if (!task) {
+        return res.status(404).json({ message: "Task not found" });
+      }
+
+      // Authorization check
+      if (task.assignedJob !== req.user.job && req.user.rank !== 'Banson') {
+        return res.status(403).json({ message: "Not authorized" });
+      }
+
+      res.json(task);
+    } catch (error) {
+      console.error("Error fetching task:", error);
+      res.status(500).json({ message: "Failed to fetch task" });
+    }
   });
 
   // Create HTTP server

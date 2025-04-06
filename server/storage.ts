@@ -5,13 +5,15 @@ import {
   emails, Email, InsertEmail,
   transactions, Transaction, InsertTransaction,
   jobApplications, JobApplication, InsertJobApplication,
-  USER_RANKS, USER_JOBS
+  USER_RANKS, USER_JOBS, Task, Payout, tasks, payouts
 } from "@shared/schema";
 import session from "express-session";
 import connectPg from "connect-pg-simple";
 import { db } from "./db";
 import { eq, desc, and, or, sql } from "drizzle-orm";
 import { pool } from "./db";
+import { isNull } from "drizzle-orm";
+
 
 const PostgresSessionStore = connectPg(session);
 
@@ -123,6 +125,196 @@ export class DatabaseStorage implements IStorage {
   async getUser(id: number): Promise<User | undefined> {
     const [user] = await db.select().from(users).where(eq(users.id, id));
     return user;
+  }
+
+  // Add these new methods to storage.ts
+  async createTask(taskData: {
+    title: string;
+    description: string;
+    assignedJob: UserJob;
+    createdBy: number;
+    dueDate?: Date;
+  }): Promise<Task> {
+    const [task] = await db.insert(tasks).values(taskData).returning();
+    return task;
+  }
+
+  async getTasks(forJob?: UserJob): Promise<Task[]> {
+    let query = db.select().from(tasks).orderBy(desc(tasks.createdAt));
+
+    if (forJob) {
+      query = query.where(eq(tasks.assignedJob, forJob));
+    }
+
+    return await query;
+  }
+
+  // Add to DatabaseStorage class
+  async deleteTask(taskId: number): Promise<boolean> {
+    try {
+      const result = await db
+        .delete(tasks)
+        .where(eq(tasks.id, taskId));
+
+      return result.rowCount > 0;
+    } catch (error) {
+      console.error("Error deleting task:", error);
+      return false;
+    }
+  }
+
+  // For admin to delete all instances of a template task
+  async deleteTaskAndAssignments(taskId: number): Promise<boolean> {
+    return await db.transaction(async (tx) => {
+      // First delete all assigned tasks (copies)
+      await tx.delete(tasks)
+        .where(eq(tasks.originalTaskId, taskId)); // You'll need to add this column
+
+      // Then delete the template
+      const result = await tx.delete(tasks)
+        .where(eq(tasks.id, taskId));
+
+      return result.rowCount > 0;
+    });
+  }
+
+  // Assign a task to specific users
+  async assignTaskToUsers(taskId: number, userIds: number[]): Promise<boolean> {
+    try {
+      // Get the original task
+      const [originalTask] = await db.select().from(tasks).where(eq(tasks.id, taskId));
+      if (!originalTask) return false;
+
+      // Create a copy for each user
+      await Promise.all(userIds.map(async userId => {
+        await db.insert(tasks).values({
+          title: originalTask.title,
+          description: originalTask.description,
+          assignedJob: originalTask.assignedJob,
+          assignedTo: userId,
+          originalTaskId: taskId, // Link to the template task
+          createdBy: originalTask.createdBy,
+          dueDate: originalTask.dueDate,
+          status: 'pending'
+        });
+      }));
+
+      return true;
+    } catch (error) {
+      console.error("Error assigning task to users:", error);
+      return false;
+    }
+  }
+
+  // Modify the getUserTasks method to:
+  async getUserTasks(userId: number): Promise<Task[]> {
+    try {
+      // First get the user's job
+      const [user] = await db.select({ job: users.job })
+        .from(users)
+        .where(eq(users.id, userId));
+
+      if (!user || !user.job) return [];
+
+      // Build the query step by step for better debugging
+      const query = db.select()
+        .from(tasks)
+        .where(
+          and(
+            // Either assigned to this user OR assigned to their job (with no specific user)
+            or(
+              eq(tasks.assignedTo, userId),
+              and(
+                eq(tasks.assignedJob, user.job),
+                isNull(tasks.assignedTo)
+              )
+            ),
+            // Only pending or completed tasks
+            or(
+              eq(tasks.status, 'pending'),
+              eq(tasks.status, 'completed')
+            )
+          )
+        )
+        .orderBy(desc(tasks.createdAt));
+
+      // For debugging - log the generated SQL
+      console.log("Tasks query SQL:", query.toSQL());
+
+      return await query;
+    } catch (error) {
+      console.error("Error in getUserTasks:", error);
+      throw error;
+    }
+  }
+
+  // Complete a task (user-specific)
+  async completeUserTask(taskId: number, userId: number): Promise<Task | undefined> {
+    return await db.transaction(async (tx) => {
+      // Verify the task is assigned to this user
+      const [task] = await tx.select()
+        .from(tasks)
+        .where(and(
+          eq(tasks.id, taskId),
+          eq(tasks.assignedTo, userId)
+        ))
+
+      if (!task || task.status !== 'pending') return undefined;
+
+      // Mark as completed
+      const [updatedTask] = await tx.update(tasks)
+        .set({ 
+          status: 'completed',
+          completedBy: userId,
+          completedAt: new Date()
+        })
+        .where(eq(tasks.id, taskId))
+        .returning();
+
+      return updatedTask;
+    });
+  }
+
+  async getTaskById(id: number): Promise<Task | undefined> {
+    const [task] = await db.select().from(tasks).where(eq(tasks.id, id)).limit(1);
+    return task;
+  }
+
+  async updateTask(
+    id: number, 
+    updateData: Partial<Task>
+  ): Promise<Task> {
+    const [task] = await db.update(tasks)
+      .set(updateData)
+      .where(eq(tasks.id, id))
+      .returning();
+    return task;
+  }
+
+  async getEmployeesByJob(job: UserJob): Promise<User[]> {
+    return await db.select()
+      .from(users)
+      .where(and(
+        eq(users.job, job),
+        eq(users.status, 'active')
+      ));
+  }
+
+  async createPayout(payoutData: {
+    job: UserJob;
+    amount: number;
+    description?: string;
+    paidBy: number;
+    taskId?: number;
+  }): Promise<Payout> {
+    const [payout] = await db.insert(payouts).values(payoutData).returning();
+    return payout;
+  }
+
+  async getPayoutHistory(): Promise<Payout[]> {
+    return await db.select()
+      .from(payouts)
+      .orderBy(desc(payouts.createdAt));
   }
 
   async getUserByUsername(username: string): Promise<User | undefined> {
