@@ -719,16 +719,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Combine both transaction types
       const combined = [
         ...allTransactions.map(t => ({ ...t, recordType: 'transaction' })),
-        ...allPayouts.map(p => ({
-          id: p.id,
-          senderId: p.paidBy,
-          amount: p.amount * -1, // Negative amount to show as outgoing
-          type: 'salary_payout',
-          description: p.description || `Salary payout for ${p.job}`,
-          createdAt: p.createdAt,
-          recordType: 'payout',
-          job: p.job
-        }))
       ].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
        .slice(0, 20);
 
@@ -1282,48 +1272,96 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Admin endpoint to delete a template task and all its assignments
+  // Admin endpoint to delete a template task and all its assignments
   app.delete("/api/tasks/global/:id", isAdmin, async (req, res) => {
     try {
       const taskId = parseInt(req.params.id);
 
-      // Verify it's a global task (status should be 'pending' or 'completed', not 'template')
+      // First check if this is a template task (has no originalTaskId)
       const [task] = await db.select()
         .from(tasks)
-        .where(and(
-          eq(tasks.id, taskId),
-          or(
-            eq(tasks.status, 'pending'),
-            eq(tasks.status, 'completed')
-          )
-        ));
+        .where(eq(tasks.id, taskId));
 
       if (!task) {
-        return res.status(404).json({ message: "Global task not found or task is not in a valid state" });
+        return res.status(404).json({ message: "Task not found" });
       }
 
-      // Get all tasks related to this global task by using the originalTaskId
-      const relatedTasks = await db.select()
-        .from(tasks)
-        .where(eq(tasks.originalTaskId, taskId));
+      // If it's a template task (no originalTaskId), delete it and all its assignments
+      if (!task.originalTaskId) {
+        // Delete the template task and all tasks that reference it as originalTaskId
+        await db.delete(tasks)
+          .where(or(
+            eq(tasks.id, taskId),
+            eq(tasks.originalTaskId, taskId)
+          ));
 
-      // Delete all related tasks (including the global task itself)
-      const deleteResults = await Promise.all(relatedTasks.map(async (relatedTask) => {
-        return await db.delete(tasks)
-          .where(eq(tasks.id, relatedTask.id));
-      }));
-
-      if (deleteResults.length === 0) {
-        return res.status(404).json({ message: "No related tasks found to delete" });
+        return res.json({
+          message: "Template task and all assigned tasks deleted successfully",
+          deletedTemplateId: taskId
+        });
       }
+
+      // If it's not a template task (has originalTaskId), delete the template and all its assignments
+      await db.delete(tasks)
+        .where(or(
+          eq(tasks.id, task.originalTaskId),
+          eq(tasks.originalTaskId, task.originalTaskId)
+        ));
 
       res.json({
-        message: "Global task and all related assignments deleted successfully",
-        deletedGlobalTaskId: taskId,
-        deletedTaskCount: deleteResults.length
+        message: "Template task and all assigned tasks deleted successfully",
+        deletedTemplateId: task.originalTaskId
       });
     } catch (error) {
       console.error("Error deleting global task:", error);
       res.status(500).json({ message: "Failed to delete global task" });
+    }
+  });
+
+  // Get all users assigned to a specific task and their completion status (admin only)
+  app.get("/api/tasks/:id/users", isAdmin, async (req, res) => {
+    try {
+      const taskId = parseInt(req.params.id);
+
+      // First get the template task to verify it exists
+      const [templateTask] = await db.select()
+        .from(tasks)
+        .where(eq(tasks.id, taskId));
+
+      if (!templateTask) {
+        return res.status(404).json({ message: "Task not found" });
+      }
+
+      // Get all assigned tasks for this template task
+      const assignedTasks = await db.select({
+        taskId: tasks.id,
+        userId: tasks.assignedTo,
+        status: tasks.status,
+        username: users.username,
+        name: users.name,
+        completedAt: tasks.completedAt
+      })
+      .from(tasks)
+      .leftJoin(users, eq(tasks.assignedTo, users.id))
+      .where(and(
+        eq(tasks.originalTaskId, taskId),
+        not(isNull(tasks.assignedTo)) // Only include tasks with assigned users
+      ));
+
+      // Format the response and filter out any null users (just in case)
+      const response = assignedTasks
+        .filter(task => task.username && task.name) // Only include tasks with valid users
+        .map(task => ({
+          user: task.username,
+          name: task.name,
+          completed: task.status === 'completed',
+          completedAt: task.completedAt
+        }));
+
+      res.json(response);
+    } catch (error) {
+      console.error("Error fetching task users:", error);
+      res.status(500).json({ message: "Failed to fetch task users" });
     }
   });
 

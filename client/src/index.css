@@ -91,6 +91,11 @@
     @apply bg-black/70 backdrop-blur-lg border border-white/10;
   }
 
+  .relative.group .absolute {
+    left: 50%;
+    transform: translateX(-50%);
+  }
+
   /* Cheese pattern background */
   .cheese-pattern {
     background-image: radial-gradient(rgba(255, 199, 44, 0.15) 2px, transparent 2px);
