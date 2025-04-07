@@ -168,7 +168,7 @@ export default function AdminPage() {
   const { data: tasksData } = useQuery({
     queryKey: ['admin-tasks'],
     queryFn: async () => {
-      const res = await apiRequest("GET", "/api/tasks");
+      const res = await apiRequest("GET", "/api/tasks/job-wide");
       return await res.json();
     }
   });
@@ -181,6 +181,24 @@ export default function AdminPage() {
   const handleCreatePayout = (values: z.infer<typeof payoutFormSchema>) => {
     createPayoutMutation.mutate(values);
   };
+
+  const deleteTaskMutation = useMutation({
+    mutationFn: async (taskId: number) => {
+      const res = await apiRequest("DELETE", `/api/tasks/global/${taskId}`);
+      return res.json();
+    },
+    onSuccess: () => {
+      toast({ title: "Task deleted successfully" });
+      queryClient.invalidateQueries({ queryKey: ['admin-tasks'] });
+    },
+    onError: (error: Error) => {
+      toast({
+        title: "Error deleting task",
+        description: error.message,
+        variant: "destructive"
+      });
+    }
+  });
   
   const fireUserMutation = useMutation({
     mutationFn: async (userId: number) => {
@@ -961,8 +979,17 @@ export default function AdminPage() {
                               </Badge>
                             </TableCell>
                             <TableCell>
-                              <Button variant="ghost" size="sm">
-                                <Trash2 className="h-4 w-4" />
+                              <Button 
+                                variant="ghost" 
+                                size="sm"
+                                onClick={() => deleteTaskMutation.mutate(task.id)}
+                                disabled={deleteTaskMutation.isPending}
+                              >
+                                {deleteTaskMutation.isPending ? (
+                                  <Loader2 className="h-4 w-4 animate-spin" />
+                                ) : (
+                                  <Trash2 className="h-4 w-4" />
+                                )}
                               </Button>
                             </TableCell>
                           </TableRow>

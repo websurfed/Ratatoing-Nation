@@ -20,7 +20,7 @@ import { desc, and } from "drizzle-orm";
 import { ZodError } from "zod";
 import { fromZodError } from "zod-validation-error";
 import { PgColumn } from "drizzle-orm/pg-core";
-import { isNull, or } from "drizzle-orm";
+import { isNull, or, not } from "drizzle-orm";
 
 // Helper to check if user is authenticated
 function isAuthenticated(req: Request, res: Response, next: Function) {
@@ -1046,70 +1046,77 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const { title, description, assignedJob, dueDate } = req.body;
 
-      if (!title || !description || !assignedJob) {
-        return res.status(400).json({ message: "Missing required fields" });
-      }
-
-      // First create a template task (not assigned to anyone yet)
-      const [task] = await db.insert(tasks).values({
+      // 1. First create the template task
+      const [templateTask] = await db.insert(tasks).values({
         title,
         description,
         assignedJob,
-        dueDate: dueDate ? new Date(dueDate) : null,
         createdBy: req.user.id,
-        status: 'template' // New status for unassigned tasks
+        status: 'template',
+        dueDate: dueDate ? new Date(dueDate) : null
       }).returning();
 
-      res.status(201).json(task);
-    } catch (error) {
-      console.error("Error creating task:", error);
-      res.status(500).json({ message: "Failed to create task" });
-    }
-  });
+      // 2. Get all users with this job
+      const employees = await db.select({ id: users.id })
+        .from(users)
+        .where(and(
+          eq(users.job, assignedJob),
+          eq(users.status, 'active')
+        ));
 
-  // In the GET /api/tasks route, modify it to:
-  app.get("/api/tasks", isAuthenticated, async (req, res) => {
-    try {
-      const query = db.select()
-        .from(tasks)
-        .where(
-          and(
-            or(
-              eq(tasks.assignedTo, req.user.id),
-              and(
-                eq(tasks.assignedJob, req.user.job || ''),
-                isNull(tasks.assignedTo)
-              )
-            ),
-            or(
-              eq(tasks.status, 'pending'),
-              eq(tasks.status, 'completed')
-            )
-          )
-        )
-        .orderBy(desc(tasks.createdAt));
+      console.log(`Found ${employees.length} employees for job ${assignedJob}`);
 
-      const results = await query;
-      res.json(results);
-    } catch (error) {
-      console.error("Error fetching tasks:", error);
-      res.status(500).json({ message: "Failed to fetch tasks" });
-    }
-  });
-
-  // Add this new route for getting job-wide tasks
-  app.get("/api/tasks/job-wide", isAuthenticated, async (req, res) => {
-    try {
-      const user = await storage.getUser(req.user.id);
-      if (!user?.job) {
-        return res.json([]);
+      // 3. Create assigned tasks for each employee
+      if (employees.length > 0) {
+        await Promise.all(employees.map(async (employee) => {
+          await db.insert(tasks).values({
+            title,
+            description,
+            assignedJob,
+            assignedTo: employee.id,
+            originalTaskId: templateTask.id,
+            createdBy: req.user.id,
+            dueDate: dueDate ? new Date(dueDate) : null,
+            status: 'pending'
+          });
+        }));
+        console.log(`Created ${employees.length} assigned tasks`);
       }
 
-      const tasks = await db.select()
+      // 4. Also create a job-wide task (assigned to job but no specific user)
+      const [jobWideTask] = await db.insert(tasks).values({
+        title,
+        description,
+        assignedJob,
+        originalTaskId: templateTask.id,
+        createdBy: req.user.id,
+        dueDate: dueDate ? new Date(dueDate) : null,
+        status: 'pending'
+      }).returning();
+
+      res.status(201).json({
+        templateTask,
+        assignedCount: employees.length,
+        jobWideTask
+      });
+    } catch (error) {
+      console.error("Task creation error:", error);
+      res.status(500).json({ 
+        message: "Failed to create tasks",
+        error: error instanceof Error ? error.message : "Unknown error"
+      });
+    }
+  });
+
+  app.get("/api/tasks", isAuthenticated, async (req, res) => {
+    try {
+      // Dynamically import to avoid circular dependencies
+      const { tasks } = await import("@shared/schema");
+
+      const userTasks = await db.select()
         .from(tasks)
         .where(and(
-          eq(tasks.assignedJob, user.job),
-          isNull(tasks.assignedTo), // Only job-wide tasks
+          eq(tasks.assignedTo, req.user.id),
           or(
             eq(tasks.status, 'pending'),
             eq(tasks.status, 'completed')
@@ -1117,9 +1124,31 @@ export async function registerRoutes(app: Express): Promise<Server> {
         ))
         .orderBy(desc(tasks.createdAt));
 
-      res.json(tasks);
+      res.json(userTasks);
     } catch (error) {
-      console.error("Error fetching job-wide tasks:", error);
+      console.error("Error fetching tasks:", error);
+      res.status(500).json({ message: "Failed to fetch tasks" });
+    }
+  });
+
+  app.get("/api/tasks/job-wide", isAdmin, async (req, res) => {
+    try {
+      const { tasks } = await import("@shared/schema");
+
+      const globalTasks = await db.select()
+        .from(tasks)
+        .where(and(
+          isNull(tasks.assignedTo),
+          or(
+            eq(tasks.status, 'pending'),
+            eq(tasks.status, 'completed')
+          )
+        ))
+        .orderBy(desc(tasks.createdAt));
+
+      res.json(globalTasks);
+    } catch (error) {
+      console.error("Error fetching global tasks:", error);
       res.status(500).json({ message: "Failed to fetch tasks" });
     }
   });
@@ -1253,49 +1282,135 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Admin endpoint to delete a template task and all its assignments
-  app.delete("/api/tasks/template/:id", isAdmin, async (req, res) => {
+  app.delete("/api/tasks/global/:id", isAdmin, async (req, res) => {
     try {
       const taskId = parseInt(req.params.id);
 
-      // Verify it's a template task
+      // Verify it's a global task (status should be 'pending' or 'completed', not 'template')
       const [task] = await db.select()
         .from(tasks)
         .where(and(
           eq(tasks.id, taskId),
-          eq(tasks.status, 'template')
+          or(
+            eq(tasks.status, 'pending'),
+            eq(tasks.status, 'completed')
+          )
         ));
 
       if (!task) {
-        return res.status(404).json({ message: "Template task not found" });
+        return res.status(404).json({ message: "Global task not found or task is not in a valid state" });
       }
 
-      const success = await storage.deleteTaskAndAssignments(taskId);
+      // Get all tasks related to this global task by using the originalTaskId
+      const relatedTasks = await db.select()
+        .from(tasks)
+        .where(eq(tasks.originalTaskId, taskId));
 
-      if (!success) {
-        return res.status(404).json({ message: "Failed to delete template and assignments" });
+      // Delete all related tasks (including the global task itself)
+      const deleteResults = await Promise.all(relatedTasks.map(async (relatedTask) => {
+        return await db.delete()
+          .from(tasks)
+          .where(eq(tasks.id, relatedTask.id));
+      }));
+
+      if (deleteResults.length === 0) {
+        return res.status(404).json({ message: "No related tasks found to delete" });
       }
 
-      res.json({ 
-        message: "Template task and all assignments deleted successfully",
-        deletedTemplateId: taskId
+      res.json({
+        message: "Global task and all related assignments deleted successfully",
+        deletedGlobalTaskId: taskId,
+        deletedTaskCount: deleteResults.length
       });
     } catch (error) {
-      console.error("Error deleting template task:", error);
-      res.status(500).json({ message: "Failed to delete template task" });
+      console.error("Error deleting global task:", error);
+      res.status(500).json({ message: "Failed to delete global task" });
     }
   });
+
+  async function getHighestTaskId(originalTaskId: number) {
+    const { tasks } = await import("@shared/schema");
+
+    const [highestTask] = await db.select()
+      .from(tasks)
+      .where(eq(tasks.originalTaskId, originalTaskId))
+      .orderBy(desc(tasks.id))
+      .limit(1);
+
+    return highestTask;
+  }
+
+
+  async function checkGlobalTaskCompletion(originalTaskId: number, job: string, currentTaskId: number) {
+    const { tasks } = await import("@shared/schema");
+
+    const assignedTasks = await db.select()
+      .from(tasks)
+      .where(and(
+        eq(tasks.originalTaskId, originalTaskId),
+        not(isNull(tasks.assignedTo))
+      ));
+
+    const allCompleted = assignedTasks.length > 0 &&
+      assignedTasks.every(task => {
+        if (task.id === currentTaskId) return true;
+        return task.status === 'completed';
+      });
+
+    const highestTask = await getHighestTaskId(originalTaskId);
+
+    if (allCompleted) {
+      const [globalTask] = await db.select()
+        .from(tasks)
+        .where(and(
+          eq(tasks.id, highestTask.id),
+          isNull(tasks.assignedTo)
+        ));
+
+      if (globalTask && globalTask.status !== 'completed') {
+        await db.update(tasks)
+          .set({
+            status: 'completed',
+            completedAt: new Date()
+          })
+          .where(eq(tasks.id, highestTask.id));
+      }
+    }
+  }
 
   // Complete a task
   app.patch("/api/tasks/:id/complete", isAuthenticated, async (req, res) => {
     try {
       const taskId = parseInt(req.params.id);
-      const task = await storage.completeUserTask(taskId, req.user.id);
+
+      // 1. Get the task first to verify it belongs to the user
+      const [task] = await db.select()
+        .from(tasks)
+        .where(and(
+          eq(tasks.id, taskId),
+          eq(tasks.assignedTo, req.user.id)
+        ));
 
       if (!task) {
-        return res.status(404).json({ message: "Task not found or already completed" });
+        return res.status(404).json({ message: "Task not found or not assigned to you" });
       }
 
-      res.json(task);
+      // 2. Mark the user's task as completed
+      const [completedTask] = await db.update(tasks)
+        .set({ 
+          status: 'completed',
+          completedBy: req.user.id,
+          completedAt: new Date()
+        })
+        .where(eq(tasks.id, taskId))
+        .returning();
+
+      // 3. Check if this task was derived from a global job-wide task
+      if (task.originalTaskId) {
+        await checkGlobalTaskCompletion(task.originalTaskId, task.assignedJob, parseInt(req.params.id));
+      }
+
+      res.json(completedTask);
     } catch (error) {
       console.error("Error completing task:", error);
       res.status(500).json({ message: "Failed to complete task" });

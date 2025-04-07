@@ -45,13 +45,13 @@ export const tasks = pgTable("tasks", {
   description: text("description").notNull(),
   assignedJob: text("assigned_job").$type<UserJob>().notNull(),
   assignedTo: integer("assigned_to").references(() => users.id),
-  originalTaskId: integer("original_task_id").references(() => tasks.id), // Add this for tracking template relationship
+  originalTaskId: integer("original_task_id").references(() => tasks.id),
   createdBy: integer("created_by").notNull().references(() => users.id),
   dueDate: timestamp("due_date"),
-  status: text("status").notNull().default('pending'), // 'template', 'pending', 'completed', 'cancelled'
+  status: text("status").notNull().default('pending'),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   completedBy: integer("completed_by").references(() => users.id),
-  completedAt: timestamp("completed_at"),
+  completedAt: timestamp("completed_at")
 });
 
 export const payouts = pgTable("payouts", {
