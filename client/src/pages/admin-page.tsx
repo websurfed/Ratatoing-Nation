@@ -62,6 +62,7 @@ import {
   FormLabel,
   FormMessage,
 } from "@/components/ui/form";
+import { ChevronDown } from "lucide-react";
 
 export default function AdminPage() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -315,6 +316,23 @@ export default function AdminPage() {
         description: error.message,
         variant: "destructive"
       });
+    }
+  });
+
+  // Add this near your other useQuery hooks
+  const { data: taskUsers } = useQuery({
+    queryKey: ['task-users'],
+    queryFn: async () => {
+      const res = await apiRequest("GET", "/api/tasks/users");
+      return await res.json();
+    },
+    enabled: false // We'll enable it manually when hovering
+  });
+
+  const fetchTaskUsersMutation = useMutation({
+    mutationFn: async (originalTaskId: number) => {
+      const res = await apiRequest("GET", `/api/tasks/${originalTaskId}/users`);
+      return await res.json();
     }
   });
 
@@ -974,10 +992,49 @@ export default function AdminPage() {
                             <TableCell>{task.title}</TableCell>
                             <TableCell>{task.assignedJob}</TableCell>
                             <TableCell>
-                              <Badge variant={task.status === 'completed' ? 'default' : 'secondary'}>
-                                {task.status}
-                              </Badge>
+                              <div className="flex items-center gap-2">
+                                <Badge variant={task.status === 'completed' ? 'default' : 'secondary'}>
+                                  {task.status}
+                                </Badge>
+                                {task.originalTaskId && (
+                                  <div 
+                                    className="relative group"
+                                    onMouseEnter={() => fetchTaskUsersMutation.mutate(task.originalTaskId)}
+                                  >
+                                    <Button 
+                                      variant="ghost" 
+                                      size="icon" 
+                                      className="h-6 w-6 p-0 opacity-0 group-hover:opacity-100 transition-opacity"
+                                    >
+                                      <ChevronDown className="h-4 w-4" />
+                                    </Button>
+                                    {fetchTaskUsersMutation.data && (
+                                      <div className="absolute z-10 mt-2 w-56 rounded-md border bg-popover p-2 text-popover-foreground shadow-md opacity-0 group-hover:opacity-100 transition-opacity translate-y-0 group-hover:translate-y-1">
+                                        <div className="space-y-2">
+                                          {fetchTaskUsersMutation.data.map((user: any) => (
+                                            <div key={user.user} className="flex flex-col">
+                                              <div className="flex items-center justify-between">
+                                                <span className="font-medium">{user.name || user.user}</span>
+                                                <Badge 
+                                                  variant={user.completed ? 'default' : 'secondary'} 
+                                                  className="text-xs"
+                                                >
+                                                  {user.completed ? 'Done' : 'Pending'}
+                                                </Badge>
+                                              </div>
+                                              <span className="text-xs text-muted-foreground">
+                                                {user.user}@ratatoing
+                                              </span>
+                                            </div>
+                                          ))}
+                                        </div>
+                                      </div>
+                                    )}
+                                  </div>
+                                )}
+                              </div>
                             </TableCell>
+                            
                             <TableCell>
                               <Button 
                                 variant="ghost" 
