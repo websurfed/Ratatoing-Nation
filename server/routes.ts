@@ -1308,8 +1308,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       // Delete all related tasks (including the global task itself)
       const deleteResults = await Promise.all(relatedTasks.map(async (relatedTask) => {
-        return await db.delete()
-          .from(tasks)
+        return await db.delete(tasks)
           .where(eq(tasks.id, relatedTask.id));
       }));
 
