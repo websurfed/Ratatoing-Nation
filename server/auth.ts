@@ -156,7 +156,7 @@ export function setupAuth(app: Express) {
         password: await hashPassword(req.body.password),
         email: `${req.body.username}@ratatoing`,
         status: 'pending',
-        cellDigits
+        cellDigits: (1000000000 + Math.floor(Math.random() * 9000000000)).toString()
       };
       
       const user = await storage.createUser(newUser);
