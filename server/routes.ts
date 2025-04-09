@@ -21,7 +21,11 @@ import {
   GameType,
   InsertGame,
   InsertGameComment,
-  games
+  games,
+
+  contacts,
+  Contact,
+  InsertContact,
 } from "@shared/schema";
 import { db } from "./db";
 import { sql, eq } from "drizzle-orm";
@@ -53,6 +57,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // Serve uploaded files
   app.use('/uploads', express.static(path.join(process.cwd(), 'uploads')));
+
+  
 
   // ===== User Routes =====
   // Get pending users (admin only)
@@ -253,6 +259,121 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error("Error deleting profile picture:", error);
       res.status(500).json({ message: "An error occurred while deleting profile picture" });
+    }
+  });
+
+  // ===== Telecom Routes =====
+  app.get("/api/telecom/contacts", isAuthenticated, async (req, res) => {
+    try {
+      const contacts = await db.select()
+        .from(contacts)
+        .where(eq(contacts.userId, req.user.id))
+        .orderBy(desc(contacts.updatedAt));
+
+      res.json(contacts);
+    } catch (error) {
+      res.status(500).json({ message: "Failed to fetch contacts" });
+    }
+  });
+
+  app.post("/api/telecom/contacts", isAuthenticated, async (req, res) => {
+    try {
+      const { cellDigits, name } = req.body;
+
+      // Validate input
+      if (!cellDigits || cellDigits.length < 10) {
+        return res.status(400).json({ message: "Valid cell digits are required" });
+      }
+
+      // Check if contact already exists
+      const [existing] = await db.select()
+        .from(contacts)
+        .where(and(
+          eq(contacts.userId, req.user.id),
+          eq(contacts.contactCellDigits, cellDigits)
+        ));
+
+      if (existing) {
+        return res.status(400).json({ message: "Contact already exists" });
+      }
+
+      // Create new contact
+      const [contact] = await db.insert(contacts).values({
+        userId: req.user.id,
+        contactCellDigits: cellDigits,
+        contactName: name || null
+      }).returning();
+
+      res.status(201).json(contact);
+    } catch (error) {
+      res.status(500).json({ message: "Failed to add contact" });
+    }
+  });
+
+  app.delete("/api/telecom/contacts/:id", isAuthenticated, async (req, res) => {
+    try {
+      const contactId = parseInt(req.params.id);
+
+      // Verify contact belongs to user
+      const [contact] = await db.select()
+        .from(contacts)
+        .where(and(
+          eq(contacts.id, contactId),
+          eq(contacts.userId, req.user.id)
+        ));
+
+      if (!contact) {
+        return res.status(404).json({ message: "Contact not found" });
+      }
+
+      await db.delete(contacts).where(eq(contacts.id, contactId));
+      res.json({ message: "Contact deleted successfully" });
+    } catch (error) {
+      res.status(500).json({ message: "Failed to delete contact" });
+    }
+  });
+
+  // Get message history
+  app.get("/api/telecom/messages", isAuthenticated, async (req, res) => {
+    try {
+      const { contactCellDigits } = req.query;
+      const user = await storage.getUser(req.user.id);
+
+      if (!user?.cellDigits || !contactCellDigits) {
+        return res.status(400).json({ message: "Invalid request" });
+      }
+
+      const messages = await storage.getMessageThread(user.cellDigits, contactCellDigits as string);
+      res.json(messages);
+    } catch (error) {
+      res.status(500).json({ message: "Failed to get messages" });
+    }
+  });
+
+  app.post("/api/telecom/messages", isAuthenticated, async (req, res) => {
+    try {
+      const { recipientCellDigits, message } = req.body;
+      const user = await storage.getUser(req.user.id);
+
+      if (!user?.cellDigits) {
+        return res.status(400).json({ message: "User has no valid cell digits" });
+      }
+
+      const [contact] = await db.select()
+        .from(contacts)
+        .where(and(
+          eq(contacts.userId, req.user.id),
+          eq(contacts.contactCellDigits, recipientCellDigits)
+        ));
+
+      if (!contact) {
+        return res.status(403).json({ message: "Can only message contacts" });
+      }
+
+      await storage.sendMessage(user.cellDigits, recipientCellDigits, message);
+      res.json({ success: true });
+    } catch (error) {
+      res.status(500).json({ message: "Failed to send message" });
     }
   });
 

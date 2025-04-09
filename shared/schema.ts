@@ -89,7 +89,19 @@ export const users = pgTable("users", {
   pocketSniffles: integer("pocket_sniffles").notNull().default(0),
   approvedBy: integer("approved_by").references((): any => users.id),
   createdAt: timestamp("created_at").notNull().defaultNow(),
+  cellDigits: text("cell_digits").notNull().unique(),
 });
+
+export const contacts = pgTable("contacts", {
+  id: serial("id").primaryKey(),
+  userId: integer("user_id").notNull().references(() => users.id),
+  contactCellDigits: text("contact_cell_digits").notNull(),
+  contactName: text("contact_name"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+}, (t) => ({
+  unq: unique().on(t.userId, t.contactCellDigits),
+}));
 
 export const tasks = pgTable("tasks", {
   id: serial("id").primaryKey(),
@@ -165,11 +177,11 @@ export const transactions = pgTable("transactions", {
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 
-// Schema validation
 export const insertUserSchema = createInsertSchema(users).omit({
   id: true,
   approvedBy: true,
-  createdAt: true
+  createdAt: true,
+  cellDigits: true // Add this to omit it from required fields
 }).extend({
   description: z.string().min(10, "Please provide a description of at least 10 characters").max(500, "Description should not exceed 500 characters")
 });
@@ -245,6 +257,9 @@ export const insertJobApplicationSchema = createInsertSchema(jobApplications).om
 });
 
 // Types
+export type Contact = typeof contacts.$inferSelect;
+export type InsertContact = typeof contacts.$inferInsert;
+
 export type Game = typeof games.$inferSelect;
 export type InsertGame = z.infer<typeof insertGameSchema>;
 export type GameComment = typeof gameComments.$inferSelect;

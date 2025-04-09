@@ -18,7 +18,8 @@ import {
   BriefcaseBusiness,
   Newspaper,
   Joystick,
-  Album
+  Album,
+  Phone,
 } from "lucide-react";
 import { BiSolidCheese } from "react-icons/bi";
 import { Separator } from "@/components/ui/separator";
@@ -158,6 +159,19 @@ export function Sidebar({ open, setOpen }: SidebarProps) {
                       {unreadCount}
                     </Badge>
                   )}
+                </a>
+              </Link>
+            </li>
+
+            <li>
+              <Link href="/telecommunication">
+                <a className={`flex items-center px-4 py-2 rounded-lg transition-colors cursor-pointer ${
+                  location === "/telecommunication" 
+                    ? "bg-primary text-primary-foreground" 
+                    : "hover:bg-accent hover:text-accent-foreground"
+                }`}>
+                  <Phone className="w-5 h-5" />
+                  <span className="ml-3">Communication</span>
                 </a>
               </Link>
             </li>

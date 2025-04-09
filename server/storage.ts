@@ -5,7 +5,7 @@ import {
   emails, Email, InsertEmail,
   transactions, Transaction, InsertTransaction,
   jobApplications, JobApplication, InsertJobApplication,
-  USER_RANKS, USER_JOBS, Task, Payout, tasks, payouts, games, Game, InsertGame, gameComments, GameComment, InsertGameComment, gameHearts
+  USER_RANKS, USER_JOBS, Task, Payout, tasks, payouts, games, Game, InsertGame, gameComments, GameComment, InsertGameComment, gameHearts, contacts, Contact, InsertContact
 } from "@shared/schema";
 import session from "express-session";
 import connectPg from "connect-pg-simple";
@@ -13,6 +13,9 @@ import { db } from "./db";
 import { eq, desc, and, or, sql } from "drizzle-orm";
 import { pool } from "./db";
 import { isNull } from "drizzle-orm";
+
+import { ref, set, push, onValue, off, query, orderByChild, equalTo } from "firebase/database";
+import { firebaseDb } from "./firebase";
 
 
 const PostgresSessionStore = connectPg(session);
@@ -77,20 +80,28 @@ export class DatabaseStorage implements IStorage {
       pool, 
       createTableIfMissing: true 
     });
-    
+
     // Set up initial admin users (banson and banson2)
     this.seedAdminUsers();
+
+    // Update any existing users without cell digits
+    this.updateMissingCellDigits();
   }
 
   // Seed admin users
+  private generateCellDigits(): string {
+    // Generate 10 random digits
+    return Array.from({length: 10}, () => Math.floor(Math.random() * 10)).join('');
+  }
+  
   private async seedAdminUsers() {
     // Import hashPassword from auth
     const { hashPassword } = await import('./auth');
-    
+
     // Only add if they don't exist
     if (!(await this.getUserByUsername("banson"))) {
       const hashedPassword = await hashPassword("CheezeFactory11$");
-      
+
       await this.createUser({
         username: "banson",
         password: hashedPassword,
@@ -100,13 +111,14 @@ export class DatabaseStorage implements IStorage {
         description: "Official Banson Administrator of Ratatoing Nation",
         rank: "Banson",
         status: "active",
-        pocketSniffles: 10000
+        pocketSniffles: 10000,
+        cellDigits: this.generateCellDigits() // Add this line
       });
     }
-    
+
     if (!(await this.getUserByUsername("banson2"))) {
       const hashedPassword = await hashPassword("CheezeFactory11$");
-      
+
       await this.createUser({
         username: "banson2",
         password: hashedPassword,
@@ -116,9 +128,108 @@ export class DatabaseStorage implements IStorage {
         description: "Secondary Banson Administrator of Ratatoing Nation",
         rank: "Banson",
         status: "active",
-        pocketSniffles: 10000
+        pocketSniffles: 10000,
+        cellDigits: this.generateCellDigits() // Add this line
       });
     }
+  }
+
+  public async updateMissingCellDigits(): Promise<void> {
+    // Get all users with empty or null cellDigits
+    const usersWithoutDigits = await db.select()
+      .from(users)
+      .where(or(
+        isNull(users.cellDigits),
+        eq(users.cellDigits, '')
+      ));
+
+    // Update each user with generated digits
+    for (const user of usersWithoutDigits) {
+      await db.update(users)
+        .set({ cellDigits: this.generateCellDigits() })
+        .where(eq(users.id, user.id));
+    }
+  }
+
+  async updateMessageStatus(messageId: string, status: 'delivered' | 'read'): Promise<void> {
+    const messageRef = ref(firebaseDb, `messages/${messageId}/status`);
+    await set(messageRef, status);
+  }
+
+  async sendMessage(senderCellDigits: string, recipientCellDigits: string, message: string): Promise<void> {
+    const messageRef = push(ref(firebaseDb, 'messages')); // Use firebaseDb
+    await set(messageRef, {
+      sender: senderCellDigits,
+      recipient: recipientCellDigits,
+      text: message,
+      timestamp: Date.now(),
+      status: 'sent',
+      participants: [senderCellDigits, recipientCellDigits].sort().join('_') // For querying
+    });
+  }
+
+  async getMessageThread(cellDigits1: string, cellDigits2: string): Promise<any[]> {
+    const participantsKey = [cellDigits1, cellDigits2].sort().join('_');
+    const messagesRef = query(
+      ref(firebaseDb, 'messages'), // Use firebaseDb
+      orderByChild('participants'),
+      equalTo(participantsKey)
+    );
+
+    return new Promise((resolve) => {
+      const unsubscribe = onValue(messagesRef, (snapshot) => {
+        const messages: any[] = [];
+        snapshot.forEach((childSnapshot) => {
+          messages.push({
+            id: childSnapshot.key,
+            ...childSnapshot.val()
+          });
+        });
+        resolve(messages);
+        unsubscribe(); // Clean up after first fetch
+      });
+    });
+  }
+
+  setupMessageListener(cellDigits: string, callback: (message: any) => void): () => void {
+    const messagesRef = query(
+      ref(firebaseDb, 'messages'), // Use firebaseDb
+      orderByChild('recipient'),
+      equalTo(cellDigits)
+    );
+
+    const onMessage = onValue(messagesRef, (snapshot) => {
+      snapshot.forEach((childSnapshot) => {
+        callback({
+          id: childSnapshot.key,
+          ...childSnapshot.val()
+        });
+      });
+    });
+
+    return () => off(messagesRef, 'value', onMessage);
+  }
+
+  async getContacts(userId: number): Promise<Contact[]> {
+    return await db.select()
+      .from(contacts)
+      .where(eq(contacts.userId, userId))
+      .orderBy(desc(contacts.updatedAt));
+  }
+
+  async addContact(userId: number, cellDigits: string, name?: string): Promise<Contact> {
+    const [contact] = await db.insert(contacts).values({
+      userId,
+      contactCellDigits: cellDigits,
+      contactName: name || null
+    }).returning();
+
+    return contact;
+  }
+
+  async deleteContact(contactId: number): Promise<boolean> {
+    const result = await db.delete(contacts).where(eq(contacts.id, contactId));
+    return result.rowCount > 0;
   }
 
   // User operations

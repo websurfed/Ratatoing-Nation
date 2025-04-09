@@ -14,6 +14,8 @@ import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useMutation } from "@tanstack/react-query";
+import { Copy } from "lucide-react";
+import { copyToClipboard } from "@/lib/utils";
 
 // Create a profile update schema with name and description
 const profileUpdateSchema = z.object({
@@ -276,6 +278,28 @@ export default function ProfilePage() {
                       <div className="flex justify-between items-center">
                         <span className="text-muted-foreground">Username:</span>
                         <span className="font-medium">{user.username}</span>
+                      </div>
+                      <div className="flex justify-between items-center">
+                        <span className="text-muted-foreground">Cellular Digits:</span>
+                        <div className="flex items-center gap-2">
+                          <span className="font-medium">{user.cellDigits || "Not set"}</span>
+                          {user.cellDigits && (
+                            <Button 
+                              variant="ghost" 
+                              size="icon" 
+                              className="h-6 w-6"
+                              onClick={() => {
+                                copyToClipboard(user.cellDigits);
+                                toast({
+                                  title: "Copied!",
+                                  description: "Cellular digits copied to clipboard",
+                                });
+                              }}
+                            >
+                              <Copy className="h-3 w-3" />
+                            </Button>
+                          )}
+                        </div>
                       </div>
                       <div className="flex justify-between items-center">
                         <span className="text-muted-foreground">Rank:</span>

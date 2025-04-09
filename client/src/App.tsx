@@ -20,6 +20,7 @@ import InventoryPage from "@/pages/inventory-page";
 import BackgroundMusic from "@/components/ui/background-music";
 import JobPage from "@/pages/job-page";
 import ArcadePage from "@/pages/arcade-page"
+import TelecommunicationsPage from "@/pages/telecommunications-page"
 
 function Router() {
   return (
@@ -37,6 +38,7 @@ function Router() {
       <ProtectedRoute path="/history" component={HistoryPage} />
       <ProtectedRoute path="/job" component={JobPage} />
       <ProtectedRoute path="/arcade" component={ArcadePage} />
+      <ProtectedRoute path="/telecommunication" component={TelecommunicationsPage} />
       <Route component={NotFound} />
     </Switch>
   );
