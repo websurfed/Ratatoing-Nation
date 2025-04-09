@@ -23,7 +23,7 @@ FROM unique_digits ud
 WHERE users.id = ud.id;
 
 -- Move temp digits to real column
-UPDATE users SET cellDigits = temp_digits;
+UPDATE users SET "cellDigits" = temp_digits;
 
 -- Drop temp column
 ALTER TABLE users DROP COLUMN temp_digits;

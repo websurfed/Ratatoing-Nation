@@ -1,8 +1,8 @@
 -- 1. Remove existing column and constraints
-ALTER TABLE users DROP COLUMN IF EXISTS cellDigits;
+ALTER TABLE users DROP COLUMN IF EXISTS "cellDigits";
 
 -- 2. Create fresh column without constraints
-ALTER TABLE users ADD COLUMN cellDigits TEXT;
+ALTER TABLE users ADD COLUMN "cellDigits" TEXT;
 
 -- 3. Generate TRULY unique numbers using row-wise random generation
 WITH numbered_users AS (
