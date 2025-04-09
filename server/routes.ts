@@ -11,8 +11,17 @@ import {
   insertEmailSchema,
   transactions,
   users,
-  tasks,  // Add this
-  payouts // Add this
+  tasks,
+  payouts,
+  
+  gameComments,
+  gameHearts,
+  Game,
+  GameComment,
+  GameType,
+  InsertGame,
+  InsertGameComment,
+  games
 } from "@shared/schema";
 import { db } from "./db";
 import { sql, eq } from "drizzle-orm";
@@ -317,6 +326,247 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
     await storage.deleteMedia(mediaId);
     res.json({ message: "Media deleted successfully" });
+  });
+
+  // ===== Arcade Routes =====
+  app.get("/api/arcade", isAuthenticated, async (req: Request, res: Response) => {
+    try {
+      const gamesData = await db.select({
+        id: games.id,
+        title: games.title,
+        description: games.description,
+        gameType: games.gameType,
+        gameContent: games.gameContent,
+        thumbnailPath: games.thumbnailPath,
+        creatorId: games.creatorId,
+        category: games.category,
+        hearts: games.hearts,
+        createdAt: games.createdAt,
+        commentCount: sql`COUNT(${gameComments.id})`.mapWith(Number), // Count comments for each game
+      })
+      .from(games)
+      .leftJoin(gameComments, eq(games.id, gameComments.gameId)) // Join with gameComments to count
+      .groupBy(games.id); // Group by game to get accurate counts per game
+
+      res.json(gamesData);
+    } catch (error) {
+      console.error("Error fetching games:", error);
+      res.status(500).json({ message: "Failed to fetch games" });
+    }
+  });
+
+  // Get single game
+  app.get("/api/arcade/:id", isAuthenticated, async (req, res) => {
+    try {
+      const gameId = parseInt(req.params.id);
+      const [game] = await db.select({
+        id: games.id,
+        title: games.title,
+        description: games.description,
+        gameType: games.gameType,
+        gameContent: games.gameContent,
+        thumbnailPath: games.thumbnailPath,
+        creatorId: games.creatorId,
+        category: games.category,
+        hearts: games.hearts,
+        createdAt: games.createdAt,
+        commentCount: sql`COUNT(${gameComments.id})`.mapWith(Number),
+      })
+      .from(games)
+      .leftJoin(gameComments, eq(games.id, gameComments.gameId))
+      .where(eq(games.id, gameId))
+      .groupBy(games.id);
+
+      if (!game) {
+        return res.status(404).json({ message: "Game not found" });
+      }
+
+      // Check if user has hearted this game
+      const hasHearted = await storage.hasHeartedGame(gameId, req.user.id);
+
+      res.json({ 
+        ...game, 
+        hasHearted,
+      });
+    } catch (error) {
+      console.log("Error fetching game:", error)
+      res.status(500).json({ message: "Failed to fetch game" });
+    }
+  });
+
+  app.post("/api/arcade", isAdmin, upload.single('thumbnail'), async (req, res) => {
+    try {
+      const { title, description, gameType, gameContent, category } = req.body;
+      const filePath = req.file ? getFilePath('arcade', req.file.filename) : null;
+
+      const gameData = {
+        title,
+        description,
+        gameType,
+        gameContent,
+        thumbnailPath: filePath,
+        creatorId: req.user.id,
+        category
+      };
+
+      const game = await storage.createGame(gameData);
+      res.status(201).json(game);
+    } catch (error) {
+      if (error instanceof ZodError) {
+        const validationError = fromZodError(error);
+        return res.status(400).json({ message: validationError.message });
+      }
+      res.status(500).json({ message: "Failed to create game" });
+    }
+  });
+
+  app.put("/api/arcade/:id", isAdmin, upload.single('thumbnail'), async (req, res) => {
+    try {
+      const gameId = parseInt(req.params.id);
+      const { title, description, gameType, gameContent, category } = req.body;
+
+      const updateData: Partial<Game> = {
+        title,
+        description,
+        gameType,
+        gameContent,
+        category
+      };
+
+      if (req.file) {
+        updateData.thumbnailPath = getFilePath('arcade', req.file.filename);
+      }
+
+      const updatedGame = await storage.updateGame(gameId, updateData);
+
+      if (!updatedGame) {
+        return res.status(404).json({ message: "Game not found" });
+      }
+
+      res.json(updatedGame);
+    } catch (error) {
+      res.status(500).json({ message: "Failed to update game" });
+    }
+  });
+
+  // Delete game (admin only)
+  app.delete("/api/arcade/:id", isAdmin, async (req, res) => {
+    try {
+      const gameId = parseInt(req.params.id);
+      const success = await storage.deleteGame(gameId);
+
+      if (!success) {
+        return res.status(404).json({ message: "Game not found" });
+      }
+
+      res.json({ message: "Game deleted successfully" });
+    } catch (error) {
+      res.status(500).json({ message: "Failed to delete game" });
+    }
+  });
+
+  app.get("/api/arcade/:id/comments", isAuthenticated, async (req, res) => {
+    try {
+      const gameId = parseInt(req.params.id);
+      const comments = await db.select({
+        id: gameComments.id,
+        content: gameComments.content,
+        createdAt: gameComments.createdAt,
+        userId: gameComments.userId,
+        username: users.username,
+        name: users.name
+      })
+      .from(gameComments)
+      .leftJoin(users, eq(gameComments.userId, users.id))
+      .where(eq(gameComments.gameId, gameId))
+      .orderBy(desc(gameComments.createdAt));
+
+      res.json(comments);
+    } catch (error) {
+      res.status(500).json({ message: "Failed to fetch comments" });
+    }
+  });
+
+  // Add comment
+  app.post("/api/arcade/:id/comments", isAuthenticated, async (req, res) => {
+    try {
+      const gameId = parseInt(req.params.id);
+      const { content } = req.body;
+
+      if (!content || content.trim().length === 0) {
+        return res.status(400).json({ message: "Comment cannot be empty" });
+      }
+
+      const comment = await storage.addGameComment({
+        gameId,
+        userId: req.user.id,
+        content
+      });
+
+      res.status(201).json(comment);
+    } catch (error) {
+      res.status(500).json({ message: "Failed to add comment" });
+    }
+  });
+
+  // Delete comment (admin or comment owner)
+  app.delete("/api/arcade/comments/:id", isAuthenticated, async (req, res) => {
+    try {
+      const commentId = parseInt(req.params.id);
+      const comment = await db.select().from(gameComments).where(eq(gameComments.id, commentId)).first();
+
+      if (!comment) {
+        return res.status(404).json({ message: "Comment not found" });
+      }
+
+      // Check if user is admin or comment owner
+      if (comment.userId !== req.user.id && req.user.rank !== 'Banson') {
+        return res.status(403).json({ message: "Not authorized" });
+      }
+
+      const success = await storage.deleteGameComment(commentId);
+
+      if (!success) {
+        return res.status(404).json({ message: "Comment not found" });
+      }
+
+      res.json({ message: "Comment deleted successfully" });
+    } catch (error) {
+      res.status(500).json({ message: "Failed to delete comment" });
+    }
+  });
+
+  app.post("/api/arcade/:id/heart", isAuthenticated, async (req, res) => {
+    try {
+      const gameId = parseInt(req.params.id);
+      if (isNaN(gameId)) {
+        return res.status(400).json({ message: "Invalid game ID" });
+      }
+
+      const result = await storage.toggleGameHeart(gameId, req.user.id);
+      res.json({
+        success: true,
+        hearts: result.hearts,
+        hasHearted: result.hasHearted
+      });
+    } catch (error) {
+      console.error("Error toggling heart:", error);
+      res.status(500).json({ 
+        success: false,
+        message: "Failed to update heart" 
+      });
+    }
+  });
+
+  // Get heart count
+  app.get("/api/arcade/:id/hearts", isAuthenticated, async (req, res) => {
+    try {
+      const gameId = parseInt(req.params.id);
+      const hearts = await storage.getGameHearts(gameId);
+      res.json({ hearts });
+    } catch (error) {
+      res.status(500).json({ message: "Failed to get heart count" });
+    }
   });
 
   // ===== Shop Routes =====

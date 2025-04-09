@@ -5,7 +5,7 @@ import {
   emails, Email, InsertEmail,
   transactions, Transaction, InsertTransaction,
   jobApplications, JobApplication, InsertJobApplication,
-  USER_RANKS, USER_JOBS, Task, Payout, tasks, payouts
+  USER_RANKS, USER_JOBS, Task, Payout, tasks, payouts, games, Game, InsertGame, gameComments, GameComment, InsertGameComment, gameHearts
 } from "@shared/schema";
 import session from "express-session";
 import connectPg from "connect-pg-simple";
@@ -125,6 +125,117 @@ export class DatabaseStorage implements IStorage {
   async getUser(id: number): Promise<User | undefined> {
     const [user] = await db.select().from(users).where(eq(users.id, id));
     return user;
+  }
+
+  // Game operations
+  async createGame(gameData: InsertGame): Promise<Game> {
+    const [game] = await db.insert(games).values(gameData).returning();
+    return game;
+  }
+
+  async getGameById(id: number): Promise<Game | undefined> {
+    const [game] = await db.select().from(games).where(eq(games.id, id));
+    return game;
+  }
+
+  async getAllGames(): Promise<Game[]> {
+    return await db.select().from(games).orderBy(desc(games.createdAt));
+  }
+
+  async updateGame(id: number, updateData: Partial<Game>): Promise<Game | undefined> {
+    const [updated] = await db.update(games)
+      .set({ ...updateData, updatedAt: new Date() })
+      .where(eq(games.id, id))
+      .returning();
+    return updated;
+  }
+
+  async deleteGame(id: number): Promise<boolean> {
+    const result = await db.delete(games).where(eq(games.id, id));
+    return result.rowCount > 0;
+  }
+
+  // Comment operations
+  async addGameComment(comment: InsertGameComment): Promise<GameComment> {
+    const [newComment] = await db.insert(gameComments).values(comment).returning();
+    return newComment;
+  }
+
+  async getGameComments(gameId: number): Promise<GameComment[]> {
+    return await db.select()
+      .from(gameComments)
+      .where(eq(gameComments.gameId, gameId))
+      .orderBy(desc(gameComments.createdAt));
+  }
+
+  async deleteGameComment(commentId: number): Promise<boolean> {
+    const result = await db.delete(gameComments).where(eq(gameComments.id, commentId));
+    return result.rowCount > 0;
+  }
+
+  // Heart operations
+  async toggleGameHeart(gameId: number, userId: number): Promise<{ hearts: number, hasHearted: boolean }> {
+    return await db.transaction(async (tx) => {
+      // Check if already hearted
+      const [existing] = await tx.select()
+        .from(gameHearts)
+        .where(and(
+          eq(gameHearts.gameId, gameId),
+          eq(gameHearts.userId, userId)
+        ));
+
+      if (existing) {
+        // Remove heart
+        await tx.delete(gameHearts)
+          .where(and(
+            eq(gameHearts.gameId, gameId),
+            eq(gameHearts.userId, userId)
+          ));
+
+        // Decrement count
+        await tx.update(games)
+          .set({ hearts: sql`${games.hearts} - 1` })
+          .where(eq(games.id, gameId));
+
+        const [game] = await tx.select({ hearts: games.hearts })
+          .from(games)
+          .where(eq(games.id, gameId));
+
+        return { hearts: game?.hearts || 0, hasHearted: false };
+      } else {
+        // Add heart
+        await tx.insert(gameHearts)
+          .values({ gameId, userId });
+
+        // Increment count
+        await tx.update(games)
+          .set({ hearts: sql`${games.hearts} + 1` })
+          .where(eq(games.id, gameId));
+
+        const [game] = await tx.select({ hearts: games.hearts })
+          .from(games)
+          .where(eq(games.id, gameId));
+
+        return { hearts: game?.hearts || 0, hasHearted: true };
+      }
+    });
+  }
+
+  async getGameHearts(gameId: number): Promise<number> {
+    const [game] = await db.select({ hearts: games.hearts })
+      .from(games)
+      .where(eq(games.id, gameId));
+    return game?.hearts || 0;
+  }
+
+  async hasHeartedGame(gameId: number, userId: number): Promise<boolean> {
+    const [heart] = await db.select()
+      .from(gameHearts)
+      .where(and(
+        eq(gameHearts.gameId, gameId),
+        eq(gameHearts.userId, userId)
+      ));
+    return !!heart;
   }
 
   // Add these new methods to storage.ts

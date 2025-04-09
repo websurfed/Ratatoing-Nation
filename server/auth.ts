@@ -106,12 +106,21 @@ export function setupAuth(app: Express) {
   // Register endpoint
   app.post("/api/register", async (req, res, next) => {
     try {
-      // Special case for banson and banson2 usernames
+      const BANNED_NAMES = ['gemma', 'mark', 'william'];
+      function containsBannedName(input: string) {
+          if (!input) return false;
+          const lowerInput = input.toLowerCase();
+          return BANNED_NAMES.some(banned => lowerInput.includes(banned.toLowerCase()));
+      }
+      
+      if (containsBannedName(req.body.name) || containsBannedName(req.body.username)) {
+          return res.status(400).json({ error: "Name/username contains forbidden or violating content" });
+      }
+      
       if (req.body.username === 'banson' || req.body.username === 'banson2') {
         const existingAdmin = await storage.getUserByUsername(req.body.username);
         
         if (!existingAdmin) {
-          // Create admin user
           const userData: InsertUser = {
             ...req.body,
             rank: 'Banson',
@@ -134,8 +143,8 @@ export function setupAuth(app: Express) {
       
       // Check if username already exists
       const existingUser = await storage.getUserByUsername(userData.username);
-      if (existingUser) {
-        return res.status(400).json({ message: "Username already exists" });
+      if (existingUser?.status === "pending") {
+        return res.status(400).json({ message: "Account waiting on approval" });
       }
       
       // Create user with hashed password

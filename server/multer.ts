@@ -13,18 +13,14 @@ if (!fs.existsSync(uploadsDir)) {
 const galleryDir = path.join(uploadsDir, "gallery");
 const shopDir = path.join(uploadsDir, "shop");
 const profileDir = path.join(uploadsDir, "profiles");
+const arcadeDir = path.join(uploadsDir, "arcade");
 
-if (!fs.existsSync(galleryDir)) {
-  fs.mkdirSync(galleryDir, { recursive: true });
-}
-
-if (!fs.existsSync(shopDir)) {
-  fs.mkdirSync(shopDir, { recursive: true });
-}
-
-if (!fs.existsSync(profileDir)) {
-  fs.mkdirSync(profileDir, { recursive: true });
-}
+// Ensure all directories exist
+[galleryDir, shopDir, profileDir, arcadeDir].forEach(dir => {
+  if (!fs.existsSync(dir)) {
+    fs.mkdirSync(dir, { recursive: true });
+  }
+});
 
 // File size limits
 const MAX_FILE_SIZE = 15 * 1024 * 1024; // 15MB
@@ -49,22 +45,32 @@ const fileFilter = (req: Express.Request, file: Express.Multer.File, cb: multer.
     ? 'profile' 
     : req.path.includes('shop') 
       ? 'shop' 
-      : 'gallery';
-      
+      : req.path.includes('arcade')
+        ? 'arcade'
+        : 'gallery';
+
+  // Profile pictures must be images
   if (uploadType === 'profile' && !ALLOWED_IMAGE_TYPES.includes(file.mimetype)) {
     return cb(new Error('Only image files are allowed for profile pictures'));
   }
-  
+
+  // Shop items must be images
   if (uploadType === 'shop' && !ALLOWED_IMAGE_TYPES.includes(file.mimetype)) {
     return cb(new Error('Only image files are allowed for shop items'));
   }
-  
+
+  // Arcade thumbnails must be images
+  if (uploadType === 'arcade' && !ALLOWED_IMAGE_TYPES.includes(file.mimetype)) {
+    return cb(new Error('Only image files are allowed for arcade thumbnails'));
+  }
+
+  // Gallery can be images or videos
   if (uploadType === 'gallery') {
     if (![...ALLOWED_IMAGE_TYPES, ...ALLOWED_VIDEO_TYPES].includes(file.mimetype)) {
       return cb(new Error('Only image and video files are allowed for gallery uploads'));
     }
   }
-  
+
   cb(null, true);
 };
 
@@ -75,6 +81,8 @@ const storage = multer.diskStorage({
       cb(null, profileDir);
     } else if (req.path.includes('shop')) {
       cb(null, shopDir);
+    } else if (req.path.includes('arcade')) {
+      cb(null, arcadeDir);
     } else {
       cb(null, galleryDir);
     }
@@ -96,6 +104,6 @@ export const upload = multer({
 });
 
 // Helper function to get file path for frontend
-export function getFilePath(type: 'gallery' | 'shop' | 'profile', filename: string): string {
-  return `/uploads/${type}/${filename}`;
+export function getFilePath(type: 'gallery' | 'shop' | 'profile' | 'arcade', filename: string): string {
+  return `/uploads/${type === 'profile' ? 'profiles' : type}/${filename}`;
 }

@@ -1,4 +1,4 @@
-import { pgTable, text, serial, integer, boolean, timestamp, jsonb } from "drizzle-orm/pg-core";
+import { pgTable, text, serial, integer, boolean, timestamp, jsonb, unique } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
@@ -14,10 +14,62 @@ export type Payout = typeof payouts.$inferSelect;
 export type InsertTask = typeof tasks.$inferInsert;
 export type InsertPayout = typeof payouts.$inferInsert;
 
+// Game types
+export const GAME_TYPES = ['embedded', 'external'] as const;
+export type GameType = typeof GAME_TYPES[number];
+
+// Games table
+export const games = pgTable("games", {
+  id: serial("id").primaryKey(),
+  title: text("title").notNull(),
+  description: text("description"),
+  gameType: text("game_type").$type<GameType>().notNull(),
+  gameContent: text("game_content"),
+  thumbnailPath: text("thumbnail_path"),
+  creatorId: integer("creator_id").notNull().references(() => users.id),
+  category: text("category"),
+  hearts: integer("hearts").notNull().default(0),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+// Game comments
+export const gameComments = pgTable("game_comments", {
+  id: serial("id").primaryKey(),
+  gameId: integer("game_id").notNull().references(() => games.id),
+  userId: integer("user_id").notNull().references(() => users.id),
+  content: text("content").notNull(),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
+// Game hearts (likes)
+export const gameHearts = pgTable("game_hearts", {
+  id: serial("id").primaryKey(),
+  gameId: integer("game_id").notNull().references(() => games.id, { onDelete: "cascade" }),
+  userId: integer("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+}, (t) => ({
+  unq: unique().on(t.gameId, t.userId), // Ensures one like per user per game
+}));
+
+// Schema validation
+export const insertGameSchema = createInsertSchema(games).omit({
+  id: true,
+  hearts: true,
+  createdAt: true,
+  updatedAt: true
+});
+
+export const insertGameCommentSchema = createInsertSchema(gameComments).omit({
+  id: true,
+  createdAt: true
+});
+
 export const USER_JOBS = [
   'Arcade Manager',
   'Media Curator',
   'Forum Moderator',
+  'Immigrants Officer'
 ] as const;
 export type UserJob = typeof USER_JOBS[number] | null;
 
@@ -193,6 +245,11 @@ export const insertJobApplicationSchema = createInsertSchema(jobApplications).om
 });
 
 // Types
+export type Game = typeof games.$inferSelect;
+export type InsertGame = z.infer<typeof insertGameSchema>;
+export type GameComment = typeof gameComments.$inferSelect;
+export type InsertGameComment = z.infer<typeof insertGameCommentSchema>;
+
 export type User = typeof users.$inferSelect;
 export type InsertUser = z.infer<typeof insertUserSchema>;
 export type LoginUser = z.infer<typeof loginUserSchema>;
