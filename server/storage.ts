@@ -85,7 +85,9 @@ export class DatabaseStorage implements IStorage {
     this.seedAdminUsers();
 
     // Update any existing users without cell digits
-    this.updateMissingCellDigits();
+    this.updateMissingCellDigits().catch(err => {
+      console.error("Failed to update missing cell digits:", err);
+    });
   }
 
   // Seed admin users

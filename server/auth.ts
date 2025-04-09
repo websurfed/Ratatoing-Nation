@@ -153,6 +153,11 @@ export function setupAuth(app: Express) {
       };
 
       // Create user with hashed password and cell digits
+      // Generate unique cell digits
+      const generateCellDigits = () => {
+        return (1000000000 + Math.floor(Math.random() * 9000000000)).toString();
+      };
+
       const newUser: InsertUser = {
         ...req.body,
         password: await hashPassword(req.body.password),
