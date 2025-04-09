@@ -1,3 +1,3 @@
 
--- Delete all contacts
-DELETE FROM contacts;
+-- Remove all contacts from the contacts table
+TRUNCATE TABLE contacts;
