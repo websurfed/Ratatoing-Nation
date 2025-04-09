@@ -147,19 +147,16 @@ export function setupAuth(app: Express) {
         return res.status(400).json({ message: "Account waiting on approval" });
       }
       
-      // Generate unique cell digits
-      const generateCellDigits = () => {
-        return (1000000000 + Math.floor(Math.random() * 9000000000)).toString();
-      };
+      // Generate unique cell digits (10 digits starting with 1)
+      const cellDigits = (1000000000 + Math.floor(Math.random() * 9000000000)).toString();
 
       // Create user with hashed password and cell digits
-
       const newUser: InsertUser = {
         ...req.body,
         password: await hashPassword(req.body.password),
         email: `${req.body.username}@ratatoing`,
         status: 'pending',
-        cellDigits: generateCellDigits()
+        cellDigits
       };
       
       const user = await storage.createUser(newUser);
