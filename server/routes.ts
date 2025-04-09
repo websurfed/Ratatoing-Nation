@@ -263,26 +263,39 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // ===== Telecom Routes =====
+  // Get contacts
   app.get("/api/telecom/contacts", isAuthenticated, async (req, res) => {
     try {
-      const contacts = await db.select()
-        .from(contacts)
+      // Change variable name from 'contacts' to 'userContacts'
+      const userContacts = await db.select()
+        .from(contacts) // Now correctly references the schema's contacts table
         .where(eq(contacts.userId, req.user.id))
         .orderBy(desc(contacts.updatedAt));
 
-      res.json(contacts);
+      res.json(userContacts); // Return the renamed variable
     } catch (error) {
+      console.error("Error fetching contacts:", error);
       res.status(500).json({ message: "Failed to fetch contacts" });
     }
   });
 
+  // In routes.ts - Update the POST /api/telecom/contacts route
   app.post("/api/telecom/contacts", isAuthenticated, async (req, res) => {
     try {
-      const { cellDigits, name } = req.body;
+      const { cellDigits } = req.body;
 
       // Validate input
       if (!cellDigits || cellDigits.length < 10) {
         return res.status(400).json({ message: "Valid cell digits are required" });
+      }
+
+      // Find user associated with these cell digits
+      const [contactUser] = await db.select()
+        .from(users)
+        .where(eq(users.cellDigits, cellDigits));
+
+      if (!contactUser) {
+        return res.status(404).json({ message: "User with this number not found" });
       }
 
       // Check if contact already exists
@@ -297,11 +310,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ message: "Contact already exists" });
       }
 
-      // Create new contact
+      // Create new contact with the contact's name
       const [contact] = await db.insert(contacts).values({
         userId: req.user.id,
         contactCellDigits: cellDigits,
-        contactName: name || null
+        contactName: contactUser.name // Use the found user's name
       }).returning();
 
       res.status(201).json(contact);
