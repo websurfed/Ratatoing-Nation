@@ -32,6 +32,7 @@ export interface IStorage {
   getUsersByRank(rank: UserRank): Promise<User[]>;
   approveUser(userId: number, approvedById: number): Promise<User | undefined>;
   banUser(userId: number): Promise<User | undefined>;
+  deleteAllContacts(): Promise<boolean>;
   
   // Media operations
   createMedia(media: InsertMedia): Promise<Media>;
@@ -158,16 +159,32 @@ export class DatabaseStorage implements IStorage {
     await set(messageRef, status);
   }
 
+  async deleteAllContacts(): Promise<boolean> {
+    try {
+      // Delete all contacts
+      const result = await db.delete(contacts);
+      return result.rowCount > 0;
+    } catch (error) {
+      console.error("Error deleting all contacts:", error);
+      return false;
+    }
+  }
+
   async sendMessage(senderCellDigits: string, recipientCellDigits: string, message: string): Promise<void> {
-    const messageRef = push(ref(firebaseDb, 'messages')); // Use firebaseDb
-    await set(messageRef, {
-      sender: senderCellDigits,
-      recipient: recipientCellDigits,
-      text: message,
-      timestamp: Date.now(),
-      status: 'sent',
-      participants: [senderCellDigits, recipientCellDigits].sort().join('_') // For querying
-    });
+    try {
+      const messageRef = push(ref(firebaseDb, 'messages'));
+      await set(messageRef, {
+        sender: senderCellDigits,
+        recipient: recipientCellDigits,
+        text: message,
+        timestamp: Date.now(),
+        status: 'sent',
+        participants: [senderCellDigits, recipientCellDigits].sort().join('_')
+      });
+    } catch (error) {
+      console.error("Firebase write failed:", error);
+      throw error;
+    }
   }
 
   async getMessageThread(cellDigits1: string, cellDigits2: string): Promise<any[]> {

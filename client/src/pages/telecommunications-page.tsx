@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useAuth } from "@/hooks/use-auth";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Sidebar } from "@/components/layout/sidebar";
@@ -16,7 +16,8 @@ import {
   MoreVertical,
   Send,
   Smile,
-  Mic
+  Mic,
+  Trash
 } from "lucide-react";
 import { 
   Form,
@@ -30,10 +31,11 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { onValue, ref, query, orderByChild, equalTo, off, push } from "firebase/database";
+import { ref, set, push, onValue, off, query, orderByChild, equalTo, get, limitToLast } from "firebase/database";
 import { firebaseDb } from "@/lib/firebase";
 import { updateMessageStatus, formatMessageForFirebase } from "@/lib/message-utils";
 import { useToast } from "@/hooks/use-toast";
+import { User } from '@shared/schema';
 
 // Phone number validation schema
 const phoneSchema = z.object({
@@ -50,8 +52,8 @@ type MessageFormValues = z.infer<typeof messageSchema>;
 
 type Contact = {
   id: string;
-  name?: string;
-  cellDigits: string;
+  contactName?: string;
+  contactCellDigits: string;
   lastMessage?: string;
   lastMessageTime?: Date;
   unreadCount?: number;
@@ -63,9 +65,16 @@ type Message = {
   sender: 'me' | 'them';
   timestamp: Date;
   status: 'sent' | 'delivered' | 'read';
+  senderName?: string;
+  recipientName?: string;
 };
 
-export function useMessageListener(currentUserCellDigits: string, contactCellDigits: string, callback: (message: any) => void) {
+function useMessageListener(
+  currentUserCellDigits: string,
+  contactCellDigits: string,
+  callback: (messages: Message[]) => void,
+  scrollToBottom: () => void
+) {
   useEffect(() => {
     if (!currentUserCellDigits || !contactCellDigits) return;
 
@@ -76,24 +85,27 @@ export function useMessageListener(currentUserCellDigits: string, contactCellDig
       equalTo(participantsKey)
     );
 
-    const onMessage = onValue(messagesRef, (snapshot) => {
-      snapshot.forEach((childSnapshot) => {
-        const message = {
-          id: childSnapshot.key,
-          ...childSnapshot.val()
-        };
-
-        // Update status if message is received
-        if (message.recipient === currentUserCellDigits && message.status === 'sent') {
-          updateMessageStatus(message.id, 'delivered');
-        }
-
-        callback(message);
+    const handleNewMessage = (snapshot: any) => {
+      const newMessages: Message[] = [];
+      snapshot.forEach((child: any) => {
+        const msg = child.val();
+        newMessages.push({
+          id: child.key,
+          text: msg.text,
+          sender: msg.sender === currentUserCellDigits ? 'me' : 'them',
+          timestamp: new Date(msg.timestamp),
+          status: msg.status || 'sent',
+          senderName: msg.senderName,
+          recipientName: msg.recipientName
+        });
       });
-    });
+      callback(newMessages.sort((a, b) => a.timestamp.getTime() - b.timestamp.getTime()));
+      scrollToBottom();
+    };
 
-    return () => off(messagesRef, 'value', onMessage);
-  }, [currentUserCellDigits, contactCellDigits, callback]);
+    onValue(messagesRef, handleNewMessage);
+    return () => off(messagesRef, 'value', handleNewMessage);
+  }, [currentUserCellDigits, contactCellDigits, callback, scrollToBottom]);
 }
 
 export default function TelecommunicationsPage() {
@@ -102,6 +114,11 @@ export default function TelecommunicationsPage() {
   const { toast } = useToast();
   const [selectedContact, setSelectedContact] = useState<Contact | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+
+  const scrollToBottom = () => {
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  };
 
   // Fetch contacts from Postgres
   const { data: contacts = [], isLoading: contactsLoading } = useQuery({
@@ -119,11 +136,33 @@ export default function TelecommunicationsPage() {
     queryKey: ['/api/telecom/messages', selectedContact?.id],
     queryFn: async () => {
       if (!selectedContact || !user?.cellDigits) return [];
-      const response = await fetch(`/api/telecom/messages?contactCellDigits=${selectedContact.cellDigits}`);
-      if (!response.ok) throw new Error('Failed to fetch messages');
-      const data = await response.json();
-      setMessages(data);
-      return data;
+
+      // Load from Firebase instead of your API
+      const participantsKey = [user.cellDigits, selectedContact.contactCellDigits].sort().join('_');
+      const snapshot = await get(query(
+        ref(firebaseDb, 'messages'),
+        orderByChild('participants'),
+        equalTo(participantsKey),
+        limitToLast(50)
+      ));
+
+      const messages: Message[] = [];
+      snapshot.forEach((child) => {
+        const msg = child.val();
+        messages.push({
+          id: child.key!,
+          text: msg.text,
+          sender: msg.sender === user.cellDigits ? 'me' : 'them',
+          timestamp: new Date(msg.timestamp),
+          status: msg.status,
+          senderName: msg.senderName,
+          recipientName: msg.recipientName
+        });
+      });
+
+      setMessages(messages.sort((a, b) => a.timestamp.getTime() - b.timestamp.getTime()));
+      scrollToBottom();
+      return messages;
     },
     enabled: !!selectedContact && !!user?.cellDigits
   });
@@ -131,29 +170,11 @@ export default function TelecommunicationsPage() {
   // Use the message listener
   useMessageListener(
     user?.cellDigits || '',
-    selectedContact?.cellDigits || '',
-    (newMessage) => {
-      setMessages(prev => {
-        // Check if message already exists
-        if (prev.some(m => m.id === newMessage.id)) return prev;
-
-        // Format the new message to match our type
-        const formattedMessage: Message = {
-          id: newMessage.id,
-          text: newMessage.text,
-          sender: newMessage.sender === user?.cellDigits ? 'me' : 'them',
-          timestamp: new Date(newMessage.timestamp),
-          status: newMessage.status
-        };
-
-        return [...prev, formattedMessage];
-      });
-
-      // Mark as read if we're the recipient
-      if (newMessage.recipient === user?.cellDigits && newMessage.status !== 'read') {
-        updateMessageStatus(newMessage.id, 'read');
-      }
-    }
+    selectedContact?.contactCellDigits || '',
+    (newMessages) => {
+      setMessages(newMessages);
+    },
+    scrollToBottom
   );
 
   // Form for adding contacts
@@ -195,30 +216,47 @@ export default function TelecommunicationsPage() {
     }
   });
 
+  const deleteContactMutation = useMutation({
+    mutationFn: async (contactId: string) => {
+      await apiRequest("DELETE", `/api/telecom/contacts/${contactId}`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/telecom/contacts'] });
+      toast({
+        title: "Contact deleted",
+        description: "Contact removed successfully"
+      });
+      setSelectedContact(null);
+    },
+    onError: (error: Error) => {
+      toast({
+        title: "Failed to delete contact",
+        description: error.message,
+        variant: "destructive"
+      });
+    }
+  });
+
   const sendMessageMutation = useMutation({
     mutationFn: async (data: MessageFormValues) => {
-      if (!selectedContact || !user?.cellDigits) throw new Error("No contact selected");
+      if (!selectedContact || !user?.cellDigits) {
+        throw new Error("No contact selected or user not available");
+      }
 
-      // Create message in Firebase
       const messageRef = push(ref(firebaseDb, 'messages'));
-      const newMessage = formatMessageForFirebase(
-        user.cellDigits,
-        selectedContact.cellDigits,
-        data.message
-      );
-
-      await update(messageRef, newMessage);
-
-      // Also store in your backend (optional)
-      await apiRequest("POST", "/api/telecom/messages", {
-        recipientCellDigits: selectedContact.cellDigits,
-        message: data.message
-      });
-
-      return {
-        id: messageRef.key,
-        ...newMessage
+      const newMessage = {
+        sender: user.cellDigits,
+        senderName: user.name,
+        recipient: selectedContact.contactCellDigits,
+        recipientName: selectedContact.contactName,
+        text: data.message,
+        timestamp: Date.now(),
+        status: 'sent',
+        participants: [user.cellDigits, selectedContact.contactCellDigits].sort().join('_')
       };
+
+      await set(messageRef, newMessage);
+      return { id: messageRef.key, ...newMessage };
     },
     onSuccess: () => {
       messageForm.reset();
@@ -236,6 +274,10 @@ export default function TelecommunicationsPage() {
   // Handle adding a contact
   const onAddContact = (data: PhoneFormValues) => {
     addContactMutation.mutate(data);
+  };
+
+  const onDeleteContact = (contactId: string) => {
+    deleteContactMutation.mutate(contactId);
   };
 
   // Handle sending a message
@@ -352,13 +394,13 @@ export default function TelecommunicationsPage() {
                         <div className="flex items-center p-4">
                           <Avatar className="h-10 w-10 mr-3">
                             <AvatarFallback>
-                              {contact.name ? contact.name.charAt(0).toUpperCase() : contact.cellDigits.slice(-2)}
+                              {contact.contactName ? contact.contactName.charAt(0).toUpperCase() : contact.contactCellDigits.slice(-2)}
                             </AvatarFallback>
                           </Avatar>
                           <div className="flex-1 min-w-0">
                             <div className="flex justify-between">
                               <p className="font-medium truncate">
-                                {contact.name || contact.cellDigits}
+                                {contact.contactName || contact.contactCellDigits}
                               </p>
                               <p className="text-xs text-muted-foreground whitespace-nowrap ml-2">
                                 {formatConversationDate(contact.lastMessageTime)}
@@ -397,19 +439,31 @@ export default function TelecommunicationsPage() {
                 </Button>
                 <Avatar className="h-8 w-8 mr-3">
                   <AvatarFallback>
-                    {selectedContact.name ? 
-                      selectedContact.name.charAt(0).toUpperCase() : 
-                      selectedContact.cellDigits.slice(-2)}
+                    {selectedContact.contactName ? 
+                      selectedContact.contactName.charAt(0).toUpperCase() : 
+                      selectedContact.contactCellDigits.slice(-2)}
                   </AvatarFallback>
                 </Avatar>
                 <div className="flex-1">
                   <h3 className="font-medium">
-                    {selectedContact.name || selectedContact.cellDigits}
+                    {selectedContact.contactName || selectedContact.contactCellDigits}
                   </h3>
-                  <p className="text-xs text-muted-foreground">{selectedContact.cellDigits}</p>
+                  <p className="text-xs text-muted-foreground">{selectedContact.contactCellDigits}</p>
                 </div>
                 <Button variant="ghost" size="icon">
                   <Phone className="h-5 w-5" />
+                </Button>
+                <Button 
+                  variant="ghost" 
+                  size="icon"
+                  onClick={() => onDeleteContact(selectedContact.id)}
+                  disabled={deleteContactMutation.isPending}
+                >
+                  {deleteContactMutation.isPending ? (
+                    <Loader2 className="h-5 w-5 animate-spin" />
+                  ) : (
+                    <Trash className="h-5 w-5 text-destructive" />
+                  )}
                 </Button>
                 <Button variant="ghost" size="icon">
                   <MoreVertical className="h-5 w-5" />
@@ -433,13 +487,21 @@ export default function TelecommunicationsPage() {
                         key={message.id}
                         className={`flex ${message.sender === 'me' ? 'justify-end' : 'justify-start'}`}
                       >
-                        <div 
-                          className={`max-w-xs md:max-w-md rounded-lg px-4 py-2 ${message.sender === 'me' 
+                        <div className={`max-w-xs md:max-w-md rounded-lg px-4 py-2 ${
+                          message.sender === 'me' 
                             ? 'bg-primary text-primary-foreground rounded-br-none' 
-                            : 'bg-muted rounded-bl-none'}`}
-                        >
+                            : 'bg-muted rounded-bl-none'
+                        }`}>
+                          {/* Show sender info for received messages */}
+                          {message.sender !== 'me' && (
+                            <p className="text-xs font-semibold mb-1">
+                              {selectedContact?.contactName || selectedContact?.contactCellDigits}
+                            </p>
+                          )}
                           <p>{message.text}</p>
-                          <div className={`text-xs mt-1 flex items-center justify-end space-x-1 ${message.sender === 'me' ? 'text-primary-foreground/70' : 'text-muted-foreground'}`}>
+                          <div className={`text-xs mt-1 flex items-center justify-end space-x-1 ${
+                            message.sender === 'me' ? 'text-primary-foreground/70' : 'text-muted-foreground'
+                          }`}>
                             <span>{formatTime(message.timestamp)}</span>
                             {message.sender === 'me' && (
                               <span>
@@ -452,6 +514,7 @@ export default function TelecommunicationsPage() {
                         </div>
                       </div>
                     ))}
+                    <div ref={messagesEndRef} />
                   </div>
                 )}
               </div>

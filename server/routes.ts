@@ -279,6 +279,21 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  app.delete("/api/telecom/contacts", isAdmin, async (req, res) => {
+    try {
+      const success = await storage.deleteAllContacts();
+      if (!success) {
+        console.log("Works!")
+        return res.status(500).json({ message: "Failed to delete contacts" });
+      }
+      res.json({ message: "All contacts deleted successfully" });
+    } catch (error) {
+      console.error("Error deleting contacts:", error);
+      res.status(500).json({ message: "Failed to delete contacts" });
+    }
+  });
+
+
   // In routes.ts - Update the POST /api/telecom/contacts route
   app.post("/api/telecom/contacts", isAuthenticated, async (req, res) => {
     try {
